@@ -1,0 +1,92 @@
+name: viapass
+
+services:
+  # ───────────────────────────────────────────────────────────────────────────
+  # PostgreSQL
+  # ───────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: viapass-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-viapass}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-viapass_dev}
+      POSTGRES_DB: ${DB_DATABASE:-viapass}
+      # Sem isto, uma mudança de senha no .env não é aplicada em volume já criado.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    ports:
+      # Exposto para permitir inspecionar o banco de fora do compose (psql, DBeaver).
+      - '${DB_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` responde antes de o banco aceitar conexões de verdade
+      # durante a inicialização; o -d garante que o teste use o banco correto.
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME:-viapass} -d ${DB_DATABASE:-viapass}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - viapass-net
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # API
+  # ───────────────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      target: ${BUILD_TARGET:-development}
+    container_name: viapass-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        # Espera o healthcheck passar, não só o contêiner existir. Sem isso a
+        # API tenta conectar antes de o Postgres aceitar conexões e morre.
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3001
+      # `postgres` é o nome do serviço na rede do compose — de dentro do
+      # contêiner, `localhost` seria o próprio contêiner da API.
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-viapass}
+      DB_PASSWORD: ${DB_PASSWORD:-viapass_dev}
+      DB_DATABASE: ${DB_DATABASE:-viapass}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      TICKET_HMAC_SECRET: ${TICKET_HMAC_SECRET}
+      TM_API_KEY: ${TM_API_KEY:-}
+      TM_API_BASE_URL: ${TM_API_BASE_URL:-https://app.ticketmaster.com/discovery/v2}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+    ports:
+      - '${PORT:-3001}:3001'
+    volumes:
+      # Hot reload em desenvolvimento. O volume anônimo em node_modules impede
+      # que a pasta do host (Windows, binários incompatíveis) sobrescreva a
+      # que foi instalada dentro da imagem Linux.
+      - ./src:/app/src
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+      - /app/node_modules
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3001/api/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - viapass-net
+
+volumes:
+  postgres-data:
+    name: viapass-postgres-data
+
+networks:
+  viapass-net:
+    name: viapass-net
+    driver: bridge
