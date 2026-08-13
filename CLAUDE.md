@@ -1,98 +1,72 @@
-# CLAUDE.md — ordens permanentes para a IA neste repositório
+# CLAUDE.md — ordens permanentes (backend)
 
-Lido automaticamente pelo Claude Code no início de cada sessão. Vale para
-qualquer agente de IA que trabalhe neste backend.
+Lido no início de cada sessão. Contém **todas** as regras essenciais inline.
+Não é necessário ler outros arquivos para começar a trabalhar.
 
 ---
 
-## 1. Antes de escrever qualquer linha de código
+## Regras — cumpra sempre
 
-**Leia as rules. Sempre.** Elas não são sugestões; são o contrato técnico.
+### Arquitetura
+- **Controller magro**: só traduz HTTP (lê request, chama service, devolve response). Regra de negócio em controller é defeito.
+- Estrutura por feature: `routes/ → middlewares/ → controller → service → entity/repository`.
+- Entity registrada explicitamente no `DataSource`. Sem `synchronize`.
+- Sem alias `@/` nos imports.
 
-| Arquivo | O que define |
+### Banco de dados
+- Migrations manuais em SQL com `up` e `down`. `synchronize: false`.
+- Campos monetários: `decimal(10,2)`. Nunca `float`.
+- Reserva de ingresso: transação atômica com `SELECT ... FOR UPDATE`.
+- Capacidade do setor é cache; verdade = `COUNT` dos tickets ativos.
+
+### Erros e API
+- Toda mensagem de erro nasce em `shared/errors/response-errors.ts` via `StatusErrors`.
+- Contrato de resposta de erro: `{ "msg": "..." }`.
+- 500 nunca expõe stack ou detalhe interno.
+- Swagger obrigatório para toda rota nova (sucesso + erro).
+
+### Acesso e segurança
+- Toda rota declara política de acesso (inclusive públicas): `publicRoute()`, `optionalAuth()`, `authGuard`, `roleGuard(...)`.
+- JWT access (15min) + refresh (7d). Senha com bcrypt. QR com HMAC-SHA256.
+- `route-policy.test.ts` cobra automaticamente a matriz de permissões.
+
+### Testes
+- Teste acompanha a entrega (mesmo commit). Service → unitário. Rota → integração.
+- Cobertura mínima: 80% linhas, 75% branches.
+- Nunca afrouxar teste para código passar. Se o guardrail acusou, o código está errado.
+
+### Workflow
+- Antes de codar: leia `docs/PROGRESSO.md` (só seção "Estado Atual") e `docs/NEXT-STEPS.md`.
+- Não reimplemente o que existe nem invente prioridade fora da fila.
+- Não instale dependência nova sem justificar em `docs/PROGRESSO.md`.
+- Ao terminar: atualize `docs/PROGRESSO.md` e `docs/NEXT-STEPS.md`.
+
+---
+
+## Referência sob demanda — leia SÓ quando a tarefa exigir
+
+| Quando | Leia |
 | --- | --- |
-| `docs/rules/01-persona.md` | Quem você é ao trabalhar aqui e qual é o padrão de qualidade |
-| `docs/rules/02-arquitetura.md` | Camadas, responsabilidade de cada uma, o que nunca fazer |
-| `docs/rules/03-banco-de-dados.md` | Migrations, entidades, transações, anti-sobrevenda |
-| `docs/rules/04-erros-e-api.md` | Padrão de erro, contrato HTTP, documentação Swagger |
-| `docs/rules/05-testes.md` | O que testar, como testar, o que não testar |
-| `docs/rules/06-fluxo-de-trabalho.md` | Como conduzir uma tarefa do início ao fim |
+| Implementar módulo novo ou mudar camadas | `docs/ARCHITECTURE.md` |
+| Criar/alterar entidade ou migration | `docs/MER.md` |
+| Dúvida em regra específica | `docs/rules/*.md` (índice em `docs/rules/README.md`) |
+| Decisões passadas / divergências spec vs código | `docs/PROGRESSO.md` (histórico completo) |
 
-Índice: `docs/rules/README.md`.
-
-Depois das rules, leia **`docs/ARCHITECTURE.md`** e **`docs/MER.md`** — são a
-especificação de origem — e então `docs/PROGRESSO.md` (estado atual) e
-`docs/NEXT-STEPS.md` (fila). Não reimplemente o que existe nem invente
-prioridade fora da fila.
-
-> Os documentos de especificação têm inconsistências conhecidas, já corrigidas
-> no código e registradas em `docs/PROGRESSO.md`. Onde código e especificação
-> divergirem, **o código vence** e a divergência está explicada lá.
+> Onde código e especificação divergirem, **o código vence** — a divergência
+> está explicada em `docs/PROGRESSO.md`.
 
 ---
 
-## 2. Durante a tarefa
-
-- **Controller magro, service com a lógica.** Controller só traduz HTTP:
-  lê o request, chama o service, devolve a resposta. Regra de negócio em
-  controller é defeito de arquitetura.
-- **Nenhuma mensagem de erro escrita inline.** Toda mensagem nasce em
-  `shared/errors/response-errors.ts`. Todo status vem de `StatusErrors`.
-- **Nenhuma alteração de schema sem migration.** `synchronize` é `false` e
-  continua assim. Ver `docs/rules/03-banco-de-dados.md`.
-- **Toda rota nova é documentada no Swagger junto**, com resposta de sucesso
-  **e** de erro. O front-end depende desse contrato — endpoint sem documentação
-  é endpoint que ninguém consegue consumir.
-- **Não instale dependência nova sem justificar** em `docs/PROGRESSO.md`.
-- **Teste o que você escreveu**, na mesma entrega.
-
----
-
-## 3. Ao terminar — obrigatório
-
-Toda entrega termina com **duas escritas**, sem exceção.
-
-### 3.1 `docs/PROGRESSO.md` — o que foi feito
-
-Entrada nova no topo, com data `YYYY-MM-DD`:
-
-- o que mudou, uma frase por item;
-- **as decisões tomadas e o que foi descartado** — item mais importante do
-  documento. O diff mostra o "o quê"; só o texto mostra o "por quê" e as
-  alternativas rejeitadas;
-- inconsistências encontradas na especificação e como foram resolvidas;
-- o que ficou de fora e por quê;
-- a saída real dos comandos de verificação.
-
-### 3.2 `docs/NEXT-STEPS.md` — o que vem a seguir
-
-- `- [x]` no que você concluiu;
-- `- [ ]` no que surgiu, específico e acionável
-  (`- [ ] Implementar POST /api/orders com reserva transacional`,
-  não `- [ ] Melhorar pedidos`);
-- riscos e dúvidas em aberto na seção própria.
-
----
-
-## 4. Verificação antes de declarar pronto
+## Verificação antes de declarar pronto
 
 ```bash
 npm run verify
 ```
 
-Lint, tipos e a suíte inteira. Para validar o ambiente completo:
+Lint, tipos e suíte inteira. Se algo falhar, **relate o erro** em vez de contornar.
 
-```bash
-docker compose up -d --build
-```
+## Entrega — obrigatório
 
-Se algo falhar, **relate o erro** em vez de contornar o teste. Ajustar um teste
-para o código passar é o único erro grave possível aqui.
-
----
-
-## 5. Como relatar
-
-Diga em texto claro: o que foi feito, o que foi verificado (com a saída real),
-o que ficou pendente e o que você deixou de fora de propósito. Não declare
-concluído o que não rodou.
+1. `docs/PROGRESSO.md` — o que mudou, decisões, o que ficou de fora, saída real do verify.
+2. `docs/NEXT-STEPS.md` — `[x]` no concluído, `[ ]` no que surgiu.
+3. Diga em texto claro o que foi feito, verificado e pendente.

@@ -63,6 +63,11 @@ services:
       TM_API_BASE_URL: ${TM_API_BASE_URL:-https://app.ticketmaster.com/discovery/v2}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      # Bind mount de host Windows/macOS não propaga eventos inotify para o
+      # contêiner Linux — sem polling, o hot reload simplesmente não dispara e
+      # a impressão é de que a alteração "não fez efeito".
+      CHOKIDAR_USEPOLLING: 'true'
+      CHOKIDAR_INTERVAL: '500'
     ports:
       - '${PORT:-3001}:3001'
     volumes:

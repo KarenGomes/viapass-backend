@@ -62,7 +62,27 @@ describe('registro de entidades', () => {
     expect(AppDataSource.options.synchronize).toBe(false)
   })
 
-  it('registra a migration inicial', () => {
-    expect(AppDataSource.options.migrations).toHaveLength(1)
+  describe('migrations', () => {
+    const migrations = (AppDataSource.options.migrations ?? []) as Array<{ name: string }>
+
+    it('registra as migrations explicitamente, sem glob', () => {
+      expect(migrations.length).toBeGreaterThan(0)
+
+      for (const migration of migrations) {
+        expect(typeof migration).toBe('function')
+      }
+    })
+
+    it('mantém a ordem cronológica', () => {
+      // O TypeORM aplica na sequência declarada. Uma migration fora de ordem
+      // roda antes da que ela depende — e só falha em banco limpo, nunca no
+      // ambiente de quem já tinha o schema aplicado.
+      const timestamps = migrations.map((migration) =>
+        Number(migration.name.match(/(\d{10,})$/)?.[1] ?? 0),
+      )
+
+      expect(timestamps).toEqual([...timestamps].sort((a, b) => a - b))
+      expect(timestamps.every((timestamp) => timestamp > 0)).toBe(true)
+    })
   })
 })

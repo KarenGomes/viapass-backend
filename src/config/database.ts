@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm'
 import { env } from './env'
 import { entities } from '../database/entities'
 import { InitialSchema1754000000000 } from '../database/migrations/1754000000000-InitialSchema'
+import { ReleasableOrderItems1754100000000 } from '../database/migrations/1754100000000-ReleasableOrderItems'
 
 /**
  * DataSource único da aplicação e alvo do CLI do TypeORM
@@ -28,6 +29,7 @@ export const AppDataSource = new DataSource({
   logging: env.NODE_ENV === 'development' ? ['error', 'warn', 'migration'] : ['error'],
 
   entities: [...entities],
-  migrations: [InitialSchema1754000000000],
+  // Ordem cronológica — o TypeORM aplica na sequência declarada.
+  migrations: [InitialSchema1754000000000, ReleasableOrderItems1754100000000],
   subscribers: [],
 })

@@ -6,12 +6,14 @@ import { Order } from './order.entity'
 /**
  * MER §3.10 — `order_items`. Um item corresponde a exatamente um ingresso.
  *
- * `ticket_id` é UNIQUE: um ingresso nunca aparece em dois pedidos. Isso é
- * proposital e é a última barreira contra sobrevenda — mesmo que a lógica de
- * reserva falhe, o banco recusa.
+ * A restrição é `UNIQUE (ticket_id) WHERE released_at IS NULL`: dois pedidos
+ * **ativos** nunca apontam para o mesmo ingresso. É a última barreira contra
+ * sobrevenda — mesmo que a lógica de reserva falhe, o banco recusa.
  *
- * Efeito colateral conhecido: um ingresso cancelado e recolocado à venda não
- * poderá gerar um segundo item. Ver docs/NEXT-STEPS.md.
+ * O `WHERE` é o que permite revender um assento devolvido ao pool depois de um
+ * pagamento recusado ou de um cancelamento. Com a restrição absoluta do MER
+ * original, esse caminho quebrava — ver a migration
+ * `ReleasableOrderItems1754100000000`.
  */
 @Entity('order_items')
 @Index('idx_order_items_order', ['orderId'])
@@ -30,8 +32,18 @@ export class OrderItem extends BaseEntity {
   @JoinColumn({ name: 'ticket_id' })
   ticket!: Ticket
 
-  @Column({ name: 'ticket_id', type: 'uuid', unique: true })
+  @Column({ name: 'ticket_id', type: 'uuid' })
   ticketId!: string
+
+  /**
+   * Momento em que o ingresso voltou ao pool (recusa de pagamento ou
+   * cancelamento). Enquanto for nulo, o item está vivo e segura o assento.
+   *
+   * Preenchido **na mesma transação** que muda o status do ticket — separar os
+   * dois deixaria o índice parcial e o pool discordando.
+   */
+  @Column({ name: 'released_at', type: 'timestamptz', nullable: true })
+  releasedAt!: Date | null
 
   /** Preço efetivamente pago, congelado no momento da compra. */
   @Column({ name: 'unit_price', type: 'decimal', precision: 10, scale: 2 })

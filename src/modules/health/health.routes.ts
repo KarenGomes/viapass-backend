@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { AppDataSource } from '../../config/database'
+import { publicRoute } from '../../middlewares/auth.middleware'
 import { HealthController } from './health.controller'
 import { HealthService } from './health.service'
 import { APP_VERSION } from '../../shared/constants'
@@ -43,6 +44,6 @@ const controller = new HealthController(new HealthService(AppDataSource, APP_VER
  *               timestamp: '2026-08-12T12:00:00.000Z'
  *               version: 1.0.0
  */
-router.get('/', controller.check)
+router.get('/', publicRoute(), controller.check)
 
 export default router

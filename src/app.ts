@@ -6,12 +6,11 @@ import swaggerUi from 'swagger-ui-express'
 
 import { corsOptions } from './config/cors'
 import { swaggerSpec } from './config/swagger'
-import { API_PREFIX } from './shared/constants'
 import { apiRateLimiter } from './middlewares/rate-limit.middleware'
 import { errorHandler } from './middlewares/error-handler.middleware'
 import { notFoundHandler } from './middlewares/not-found.middleware'
 
-import healthRoutes from './modules/health/health.routes'
+import { API_ROUTES } from './api-routes'
 
 /**
  * Monta a aplicação Express sem subir o servidor.
@@ -52,7 +51,11 @@ export function createApp(): Express {
   )
   app.get('/docs.json', (_req, res) => res.json(swaggerSpec))
 
-  app.use(`${API_PREFIX}/health`, healthRoutes)
+  // Montagem a partir do registro central — a mesma lista que a auditoria de
+  // políticas de acesso percorre, para que nenhuma rota exista só num dos dois.
+  for (const { prefix, router } of API_ROUTES) {
+    app.use(prefix, router)
+  }
 
   app.use(notFoundHandler)
   app.use(errorHandler)

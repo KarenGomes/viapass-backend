@@ -5,85 +5,79 @@ nunca viu o projeto começar sem perguntar nada.
 
 ---
 
+## Concluído — 2026-08-13 (`feature/importacao-jwt-cruds`)
+
+- [x] Autenticação JWT com access + refresh e segredos distintos
+- [x] `authGuard`, `roleGuard`, `publicRoute`, `optionalAuth` — política fail-closed
+- [x] Teste que reprova rota sem política e guarda a matriz do MER §5.2
+- [x] `validateBody` com class-validator, respondendo no formato `{ msg }`
+- [x] Cliente da Ticketmaster com limite de 5 req/s e tradução de erro
+- [x] Mapeador da Discovery API, testado com fixtures
+- [x] `findOrCreate` de venue, atração e classificação
+- [x] Importação de evento como rascunho
+- [x] Seed offline, idempotente e capaz de retomar estado incompleto
+- [x] CRUD de eventos + publicação com geração do pool de ingressos
+- [x] `GET /events/:id/seats` para o mapa de assentos
+- [x] Checkout com reserva transacional anti-sobrevenda
+- [x] Pagamento simulado com confirmação **e** recusa
+- [x] Cancelamento com devolução ao estoque
+- [x] Ingressos com QR assinado por HMAC
+- [x] Compartilhamento por link com resgate único
+- [x] Portaria com os quatro retornos e auditoria de toda tentativa
+- [x] Corrigida a inconsistência #6 (UNIQUE impedia recompra após recusa)
+
 ## Concluído — 2026-08-12
 
-- [x] Subir Node + Express + TypeORM + TypeScript estrito
-- [x] Validação de variáveis de ambiente no boot
-- [x] As 12 entidades do MER + junção `event_attractions`
-- [x] Migration inicial com CHECKs, índice parcial e FKs
+- [x] Node + Express + TypeORM + TypeScript estrito
+- [x] Validação de ambiente no boot
+- [x] 12 entidades + migration inicial com CHECKs e índice parcial
 - [x] `AppError` + `StatusErrors` + `ResponseErrors` + tratador global
-- [x] Swagger com respostas de sucesso e erro reutilizáveis
-- [x] `GET /api/health` validando a conexão real com o Postgres
-- [x] Docker Compose com healthcheck em ambos os serviços
-- [x] Jest + Supertest com 45 testes
-- [x] `CLAUDE.md` e as rules em `docs/rules/`
+- [x] Swagger com respostas reutilizáveis
+- [x] `GET /api/health` validando a conexão real
+- [x] Docker Compose com healthcheck
+- [x] `CLAUDE.md` e rules
 
 ---
 
-## 1 — Autenticação (bloqueia todo o resto)
+## 1 — Lacunas do que já foi entregue
 
-- [ ] `auth.service`: registro com bcrypt 12 rounds e login emitindo access + refresh
-- [ ] `authGuard`: valida o JWT e popula `req.user` (estender o tipo em `shared/types/express.d.ts`)
-- [ ] `roleGuard(['organizer'])`: autorização por papel conforme a matriz do `MER §5.2`
-- [ ] `validate(DTO)`: middleware de `class-validator` devolvendo `{ msg }` no formato padrão
-- [ ] **Decidir o `SameSite` do refresh cookie** — `Strict` quebra em produção com domínios diferentes (inconsistência #4)
-- [ ] `POST /auth/refresh` e `POST /auth/logout`
-- [ ] Testes: credencial errada, token expirado, token de outro papel
+- [ ] **Teste de concorrência real**: dois `POST /orders` simultâneos no último
+      assento — só um pode passar. Precisa de banco de verdade (Testcontainers)
+- [ ] Testes unitários de `OrderService` e `EventService` — hoje só a lógica de
+      pagamento, portaria, auth e mapeamento tem cobertura
+- [ ] **Reserva com expiração**: hoje a recusa devolve o assento na hora. O
+      comportamento de mercado é segurar por ~10min, o que exige um job que
+      libere pedidos `pending` vencidos
+- [ ] Exercitar a importação contra a API real da Ticketmaster (precisa de
+      `TM_API_KEY`)
+- [ ] Busca com acento-insensível — hoje `ILIKE` só ignora maiúsculas.
+      Requer a extensão `unaccent` do Postgres
+- [ ] Rate limit da Ticketmaster é por instância (memória). Com mais de uma
+      réplica, o limite de 5 req/s é furado — precisaria de contador
+      compartilhado
 
-## 2 — Catálogo Ticketmaster
+## 2 — Segurança e operação
 
-- [ ] `catalog.service` com axios: `GET /events` da Discovery API
-- [ ] Respeitar os limites: 5 req/s, 5.000/dia, `size × page < 1000` (já em `shared/constants`)
-- [ ] Tratar 401 do TM como `CATALOG_NOT_CONFIGURED` e 5xx/timeout como `CATALOG_UNAVAILABLE`
-- [ ] `GET /api/catalog/search` restrito a `organizer`
-- [ ] Testes com axios mockado — a suíte não pode depender da API externa
+- [ ] Revogação de refresh token (hoje um refresh vazado vale 7 dias)
+- [ ] Criar organizador e portaria deveria ser ação administrativa — hoje
+      `POST /auth/register` aceita o papel para facilitar a avaliação
+- [ ] Logger estruturado no lugar de `console.log`
+- [ ] Métricas e tracing
 
-## 3 — Eventos
-
-- [ ] `venue.service.findOrCreate` e `attraction.service.findOrCreate` (upsert por `tm_*_id`)
-- [ ] `POST /api/events/import`: persiste venue, attractions, classification, imagens e faixas de preço
-- [ ] `PUT /api/events/:id`: capacidade, `seat_map_config` e preço final (só o organizador dono)
-- [ ] `PUT /api/events/:id/publish`: gera o pool de tickets com `code` e `qr_hash`, muda status
-- [ ] `GET /api/events` com busca, filtro e paginação
-- [ ] `GET /api/events/:id` com relações carregadas
-
-## 4 — Reserva e checkout
-
-- [ ] `POST /api/orders` com a transação anti-sobrevenda da regra 03
-- [ ] Pagamento simulado cobrindo **confirmação e recusa** (o desafio exige os dois)
-- [ ] `POST /api/orders/:id/cancel` devolvendo os ingressos ao pool
-- [ ] `GET /api/orders/my`
-- [ ] **Teste de concorrência**: dois pedidos simultâneos no último assento — só um pode passar
-
-## 5 — Ingressos e portaria
-
-- [ ] `qr-code.util`: gerar e conferir `HMAC_SHA256(id + ':' + code, TICKET_HMAC_SECRET)`
-- [ ] `GET /api/tickets/my` com o QR em data URI
-- [ ] `POST /api/tickets/:id/share` gerando token de 32 bytes com validade de 48h
-- [ ] `POST /api/tickets/claim/:token` transferindo a posse
-- [ ] `POST /api/gate/validate` com os quatro retornos: `valid`, `invalid`, `already_used`, `wrong_event`
-- [ ] Registrar **toda** tentativa em `ticket_validations`, inclusive as recusadas
-- [ ] Teste: validar o mesmo ingresso duas vezes devolve `already_used` na segunda
-
-## 6 — Seeds (requisito do desafio)
-
-- [ ] `seed-runner` idempotente — rodar duas vezes não pode duplicar
-- [ ] 1 organizador, 2 clientes, 1 portaria com as credenciais do `MER §8`
-- [ ] 1 venue e ao menos 1 evento publicado com pool de ingressos disponível
-- [ ] Adicionar ao compose como serviço opcional (`profiles: [seed]`)
-
-## 7 — Qualidade
-
-- [ ] Testes de integração com banco real (Testcontainers ou Postgres de teste no compose)
-- [ ] Logger estruturado substituindo `console.log`
-- [ ] Cobertura acima do piso nos módulos de negócio
-
-## 8 — Entrega
+## 3 — Entrega
 
 - [ ] `README` da raiz cobrindo front + back
 - [ ] Compose único na raiz subindo front, back e banco
 - [ ] Deploy (vale 1 ponto na nota do desafio)
 - [ ] `docs/USO-DE-IA.md`, como já existe no front-end
+
+## 4 — Front-end
+
+O back-end está pronto para ser consumido. O contrato está em `/docs.json`.
+
+- [ ] Cliente HTTP com o access token e renovação automática no 401
+- [ ] Telas: home, detalhe do evento, mapa de assentos, checkout, meus
+      ingressos, portaria, painel do organizador
 
 ---
 
@@ -91,10 +85,10 @@ nunca viu o projeto começar sem perguntar nada.
 
 | # | Assunto | Situação |
 | --- | --- | --- |
-| 1 | **`SameSite` do refresh cookie** — `Strict` funciona em localhost (mesmo site, portas diferentes) e quebra em produção com domínios distintos | Decidir na tarefa 1 |
-| 2 | **`order_items.ticket_id UNIQUE`** impede que um ingresso cancelado gere um segundo item | Mantido de propósito; se cancelamento com revenda entrar no escopo, o caminho é emitir um ticket novo em vez de reaproveitar |
-| 3 | **Mapa de assentos vs. pista** — o desafio permite um dos dois; o schema suporta os dois via `seat_type` | Definir antes da tarefa 3 |
-| 4 | **Sem `TM_API_KEY`** — a integração real não foi exercitada | Chave gratuita em developer.ticketmaster.com |
-| 5 | **`event_status_enum` tem `published` e `onsale`** — dois estados quase iguais | Definir a transição exata na tarefa 3, ou fundir os dois |
-| 6 | **Contrato com o front-end** — o front já tem design system, mas nenhuma tela consome a API | O Swagger em `/docs.json` é o contrato; manter atualizado a cada rota |
-| 7 | **Volume do Postgres persiste entre `docker compose down`** — mudança de senha no `.env` não é aplicada a volume existente | Usar `docker compose down -v` ao trocar credenciais |
+| 1 | **Assento devolvido na hora após recusa** — o cliente pode perder o lugar enquanto pega outro cartão | Alternativa (segurar por N minutos) exige job de expiração; decidir se entra no escopo |
+| 2 | **Papel no registro público** — qualquer um pode criar conta de organizador ou portaria | Intencional para a avaliação; precisa mudar antes de qualquer uso real |
+| 3 | **`event_status_enum` tem `published` e `onsale`** | Hoje `publish` vai direto para `onsale`; `published` está sem uso real. Fundir ou dar significado |
+| 4 | **Sem `TM_API_KEY`** | O cliente está implementado e o mapeador testado, mas a chamada real nunca rodou |
+| 5 | **Hot reload no Windows** | Resolvido com polling no compose; em máquina lenta pode custar CPU |
+| 6 | **Refresh sem revogação** | Logout limpa o cookie, mas o token continua válido até expirar |
+| 7 | **Volume do Postgres persiste no `down`** | Use `docker compose down -v` ao trocar credenciais no `.env` |
