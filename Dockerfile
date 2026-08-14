@@ -45,8 +45,19 @@ COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 
+# A pasta de upload precisa existir e pertencer ao usuário da aplicação.
+# O módulo de upload a cria no carregamento, e sem isto o `mkdir` estoura
+# EACCES: `/app` é do root, e o processo roda como `node`. Efeito prático: a
+# API nem sobe em produção.
+RUN mkdir -p /app/public/uploads && chown -R node:node /app/public
+
 # Nunca rodar como root: se a aplicação for comprometida, o atacante herda
 # um usuário sem privilégios.
 USER node
 EXPOSE 3001
-CMD ["node", "dist/server.js"]
+
+# Migrations e seed antes de servir, como o compose faz em desenvolvimento.
+# Hospedagem que constrói a imagem direto do Dockerfile (Render, Fly, Cloud Run)
+# não lê o `docker-compose.yml` — sem isto, o contêiner sobe contra um banco sem
+# schema e todo request falha. A seed é idempotente: redeploy não duplica nada.
+CMD ["npm", "run", "start:prod"]
