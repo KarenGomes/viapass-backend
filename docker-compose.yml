@@ -39,6 +39,11 @@ services:
       target: ${BUILD_TARGET:-development}
     container_name: viapass-api
     restart: unless-stopped
+    # Migrations e seed antes de servir. A seed é idempotente (usuários por
+    # e-mail, eventos por `tm_event_id`), então subir o contêiner de novo
+    # reaproveita o que já existe em vez de duplicar — e um banco recém-criado
+    # já nasce com o catálogo completo.
+    command: npm run start:docker
     depends_on:
       postgres:
         # Espera o healthcheck passar, não só o contêiner existir. Sem isso a
@@ -63,6 +68,11 @@ services:
       TM_API_BASE_URL: ${TM_API_BASE_URL:-https://app.ticketmaster.com/discovery/v2}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      # Bind mount de host Windows/macOS não propaga eventos inotify para o
+      # contêiner Linux — sem polling, o hot reload simplesmente não dispara e
+      # a impressão é de que a alteração "não fez efeito".
+      CHOKIDAR_USEPOLLING: 'true'
+      CHOKIDAR_INTERVAL: '500'
     ports:
       - '${PORT:-3001}:3001'
     volumes:
@@ -72,6 +82,11 @@ services:
       - ./src:/app/src
       - ./package.json:/app/package.json
       - ./tsconfig.json:/app/tsconfig.json
+      # Sem este bind, a capa enviada pelo organizador vive só na camada
+      # gravável do contêiner: um `compose up --build` recria o contêiner e as
+      # imagens somem, deixando no banco linhas apontando para arquivos que
+      # não existem mais.
+      - ./public/uploads:/app/public/uploads
       - /app/node_modules
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:3001/api/health || exit 1']

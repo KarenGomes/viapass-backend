@@ -8,12 +8,14 @@ import type { Express } from 'express'
  * middlewares, formato das respostas — e não o banco. A conexão real é
  * validada pelo healthcheck do Docker.
  */
-jest.mock('./config/database', () => ({
-  AppDataSource: {
-    isInitialized: true,
-    query: jest.fn().mockResolvedValue([{ '?column?': 1 }]),
-  },
-}))
+jest.mock('./config/database', () => {
+   
+  const { createDataSourceMock } = require('./test/data-source.mock') as {
+    createDataSourceMock: () => unknown
+  }
+
+  return { AppDataSource: createDataSourceMock() }
+})
 
 // `require` e não `import`: o mock acima precisa estar aplicado antes de
 // `app.ts` resolver `config/database`, e os imports são içados para o topo.
