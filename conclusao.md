@@ -57,6 +57,13 @@
   (`localStorage`), sem vínculo com a conta. A melhoria seria exibir um modal
   informando que é preciso entrar para favoritar.
 
+- Bug de fluxo: Ao comprar ingresso com sucesso deveria redirecionar o usuário
+  para a página de meus pedidos, porém atualmente se mantém em uma tela vazia.
+
+- Atualmente a tela com QR code atualmente não recarrega automaticamente quando
+  o código é validado, dessa forma os usuários não têm um feedback instantâneo que o
+  QR foi validado com sucesso apesar da funcionalidade estar funcionando corretamente.  
+
 ---
 
 ## Links
