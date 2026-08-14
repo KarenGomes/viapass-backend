@@ -28,6 +28,8 @@ export interface RouteModule {
  * interno de framework para uma verificação de segurança é frágil demais —
  * este registro é a fonte de verdade, e não quebra em upgrade.
  */
+import uploadRoutes from './modules/upload/upload.routes'
+
 export const API_ROUTES: RouteModule[] = [
   { prefix: `${API_PREFIX}/health`, router: healthRoutes },
   { prefix: `${API_PREFIX}/auth`, router: authRoutes },
@@ -37,4 +39,5 @@ export const API_ROUTES: RouteModule[] = [
   { prefix: `${API_PREFIX}/orders`, router: orderRoutes },
   { prefix: `${API_PREFIX}/tickets`, router: ticketRoutes },
   { prefix: `${API_PREFIX}/gate`, router: gateRoutes },
+  { prefix: `${API_PREFIX}/upload`, router: uploadRoutes },
 ]

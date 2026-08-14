@@ -67,6 +67,7 @@ const EXPECTED: Record<string, string> = {
   'POST /api/tickets/claim/:token': 'role:client',
   'POST /api/gate/validate': 'role:gate',
   'GET /api/gate/tickets/:ticketId/history': 'role:gate',
+  'POST /api/upload/image': 'role:organizer',
 }
 
 function describePolicyKind(route: (typeof routes)[number]): string {

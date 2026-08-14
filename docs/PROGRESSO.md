@@ -13,10 +13,80 @@ Histórico do que foi feito, em ordem cronológica inversa. Regra em
 - **Stack**: Node + Express + TypeScript + TypeORM + PostgreSQL (Docker)
 - **Auth**: JWT (access 15min / refresh 7d), bcrypt, 3 roles (Organizador, Cliente, Portaria)
 - **Módulos implementados**: auth, events (CRUD + importação Ticketmaster), orders (reserva + pagamento), tickets (QR HMAC-SHA256, compartilhamento), gate (validação)
-- **Seed**: 4 usuários, 3 eventos, 234 ingressos. Funciona sem TM_API_KEY.
+- **Seed**: 4 usuários e 30 eventos reais da Ticketmaster (~6.200 ingressos), rodando automaticamente a cada subida do contêiner. Funciona sem TM_API_KEY.
 - **Política de acesso**: fail-closed, toda rota declara quem pode chamá-la, `route-policy.test.ts` cobra.
 - **Decisão ativa**: capacidade = cache, verdade = COUNT. Reserva atômica com `SELECT FOR UPDATE`.
 - **Verificação**: `npm run verify` passando (lint + tipos + testes).
+
+---
+
+## 2026-08-14 — Catálogo real na seed e seed automática no Docker
+
+Substituição das 3 fixtures escritas à mão por 30 eventos reais capturados da
+Discovery API, com a seed passando a rodar sozinha a cada subida do contêiner.
+
+### Feito
+
+- `npm run seed:capture` — script novo que busca eventos reais e regrava a
+  fixture. Roda à mão, nunca no boot.
+- Fixture com 30 eventos brasileiros reais (124KB), substituindo as 3 antigas.
+- `npm run start:docker` (migrations → seed → API) como `command` do compose.
+- Configuração de venda derivada do evento, no lugar da tabela por id.
+- Normalização da grafia de cidade no mapeador.
+- Testes do mapeador desacoplados da fixture.
+
+### Decisões
+
+**Captura em dois passos, e não busca direta.** O endpoint de busca devolve o
+`venue` resumido — sem cidade nem endereço. Numa amostra de 100 eventos, só 5
+traziam cidade; o filtro de local da home ficaria praticamente vazio. O detalhe
+(`/events/{id}`) traz o registro completo, então a captura busca a lista e
+depois o detalhe de cada selecionado. São ~31 chamadas contra uma cota de
+5.000/dia.
+
+**Fixture versionada, não chamada ao vivo no boot.** Subir o projeto não pode
+depender de rede, de `TM_API_KEY` nem da cota da Ticketmaster, e dois
+`docker compose up` precisam produzir o mesmo banco. A captura fica separada,
+sob demanda.
+
+**Resposta crua e podada, não já normalizada.** A fixture guarda o formato da
+API para continuar passando pelo `mapEvent` da importação real — o caminho de
+importação segue exercitado a cada seed. A poda remove só o que os nossos tipos
+não declaram (`_links`, `sales`, `locale`) e limita a 3 imagens por evento: sem
+isso o arquivo tinha 361KB de ruído e nem compilava, porque TypeScript recusa
+propriedade desconhecida em literal.
+
+**Configuração de venda derivada, não tabelada.** A tabela por `tm_event_id`
+não sobrevive a uma recaptura: os ids mudam e ela passaria a apontar para
+eventos inexistentes, deixando tudo em rascunho sem aviso. A derivação usa um
+hash FNV-1a estável do id — determinística, então a mesma fixture gera sempre o
+mesmo banco. `Math.random()` faria dois `up` divergirem.
+
+**Grafia de cidade uniformizada no mapeador.** A API devolveu "Rio De Janeiro"
+e "Rio de Janeiro" no mesmo lote. Como `listLocations` agrupa por `venue.city`,
+a mesma cidade virava duas opções no filtro, cada uma com parte dos eventos.
+Corrigido na fronteira com a API, valendo também para a importação que o
+organizador dispara — não só para a seed.
+
+**Testes do mapeador com fixtures próprias.** Antes liam
+`TICKETMASTER_FIXTURES` e afirmavam sobre "Gala na Ópera". Como o arquivo agora
+é gerado, cada recaptura quebraria a suíte — falha sem defeito, que ensina a
+equipe a ignorar o vermelho. As fixtures de unidade passaram a ser declaradas
+no próprio teste.
+
+### Ficou de fora
+
+- Só `countryCode=BR`. O catálogo brasileiro tem 181 eventos e nenhum traz
+  `priceRanges`, então o preço de venda é derivado do segmento.
+- A seed não recria eventos apagados à mão depois de já terem sido importados:
+  a idempotência é por `tm_event_id`, e um evento removido volta a ser criado
+  na execução seguinte. É o comportamento desejado aqui.
+
+### Verificação
+
+`npm run verify` — lint, tipos e 153 testes passando (eram 146; +7 do
+mapeador). Boot completo validado com `docker compose down -v` seguido de `up`:
+migrations aplicadas, 30 eventos e 6.186 ingressos criados, `/api/health` OK.
 
 ---
 

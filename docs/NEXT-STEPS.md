@@ -5,6 +5,30 @@ nunca viu o projeto começar sem perguntar nada.
 
 ---
 
+## Concluído — 2026-08-14 (catálogo real e seed automática)
+
+- [x] `npm run seed:capture` para capturar eventos reais da Discovery API
+- [x] Fixture com 30 eventos brasileiros reais, substituindo as 3 escritas à mão
+- [x] Detalhe buscado por evento, para trazer cidade e endereço completos
+- [x] Poda da resposta para o shape declarado em `TMEvent` (361KB → 124KB)
+- [x] Seed rodando sozinha no boot do contêiner (`npm run start:docker`)
+- [x] Configuração de venda derivada por hash estável, no lugar da tabela por id
+- [x] Grafia de cidade uniformizada no mapeador (evita cidade duplicada no filtro)
+- [x] Testes do mapeador desacoplados da fixture gerada
+
+### Surgiu
+
+- [ ] Preço de venda vem do segmento, não da Ticketmaster: nenhum evento do
+      catálogo BR traz `priceRanges`. Se a cobertura melhorar, `priceFor` já
+      prefere o valor informado — só falta reavaliar a faixa derivada.
+- [ ] A captura lê só a primeira página (100 de 181 eventos BR). Paginar
+      ampliaria a variedade de cidades e segmentos.
+- [ ] `docker compose down -v` apaga o volume e, com ele, dados criados à mão
+      na aplicação. Vale documentar no README que a seed repõe só o catálogo,
+      não o que foi criado pela interface.
+
+---
+
 ## Concluído — 2026-08-13 (`feature/importacao-jwt-cruds`)
 
 - [x] Autenticação JWT com access + refresh e segredos distintos

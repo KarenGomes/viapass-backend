@@ -2,11 +2,33 @@
 
 API da plataforma de eventos e ingressos ViaPass (Desafio Elite Dev).
 
-> **Estado atual:** fundação, schema completo e ambiente Docker prontos e
-> validados. **Nenhum módulo de negócio foi implementado ainda** — auth,
-> eventos, pedidos, ingressos e portaria estão em
-> [`docs/NEXT-STEPS.md`](docs/NEXT-STEPS.md).
-> A única rota funcional é `GET /api/health`.
+> **Estado atual:** todos os requisitos de back-end do desafio estão
+> implementados e cobertos por testes. 33 operações em 28 rotas, 153 testes
+> passando. Um `docker compose up` sobe a API já com o banco populado.
+
+---
+
+## O que está pronto
+
+Cada item do desafio e onde ele vive no código.
+
+| Requisito do desafio | Situação | Onde |
+| --- | --- | --- |
+| Integração com API externa (Ticketmaster Discovery) | ✅ | `modules/catalog/` — cliente com limite de 5 req/s, mapeador e importação |
+| Autenticação com três papéis | ✅ | `modules/auth/` — JWT access 15min + refresh 7d, bcrypt |
+| Armazenamento de eventos, reservas e ingressos | ✅ | `modules/events/`, `modules/orders/`, `modules/tickets/` |
+| Mesmo lugar não vendido duas vezes | ✅ | Reserva em transação com `SELECT … FOR UPDATE` |
+| QR que não pode ser forjado | ✅ | HMAC-SHA256 em `shared/utils/qr-code.util.ts` |
+| Compartilhamento de ingresso por link | ✅ | `POST /tickets/{id}/share`, resgate único, TTL de 48h |
+| Validação na portaria, sem revalidar | ✅ | `modules/gate/` — válido, inválido, já utilizado, evento errado |
+| Pagamento simulado, com confirmação **e** recusa | ✅ | `modules/orders/payment.service.ts` — final `0000` recusa |
+| Dados de teste semeados | ✅ | 4 usuários e 30 eventos reais publicados (ver abaixo) |
+
+Opcionais do desafio também entregues: painel do organizador, busca e filtro de
+eventos, cancelamento com devolução ao estoque, Docker Compose e testes.
+
+**Fora do escopo pedido**, feito porque o fluxo pedia: upload de capa do evento
+(`modules/upload/`) e listagem de cidades para o filtro da home.
 
 ---
 
@@ -34,13 +56,11 @@ Cole os três valores no `.env`.
 docker compose up -d --build
 ```
 
-**4. Aplique o schema**
+O contêiner aplica as migrations e roda a seed antes de servir. O primeiro boot
+leva ~40s (schema + 30 eventos + ~6.200 ingressos); os seguintes são rápidos,
+porque a seed é idempotente e reaproveita o que já existe.
 
-```bash
-docker compose exec api npm run migration:run
-```
-
-**5. Confirme**
+**4. Confirme**
 
 ```bash
 curl http://localhost:3001/api/health
@@ -84,6 +104,26 @@ docker compose down -v
 
 > `-v` apaga o volume do banco. Necessário ao trocar as credenciais no `.env`:
 > o Postgres só lê `POSTGRES_PASSWORD` na primeira inicialização do volume.
+>
+> **Atenção:** o `-v` apaga o banco inteiro. A seed repõe os usuários e o
+> catálogo de eventos, mas **não** o que tiver sido criado pela interface —
+> eventos, pedidos e ingressos cadastrados à mão se perdem. Sem o `-v`, o
+> volume é preservado.
+
+### Catálogo de eventos
+
+A seed popula 30 eventos reais da Ticketmaster, versionados em
+`src/database/seeds/fixtures/`. Ela roda offline: não precisa de `TM_API_KEY`
+nem de rede, e duas execuções produzem o mesmo banco.
+
+Para renovar o catálogo (aí sim exige `TM_API_KEY` válida no `.env`):
+
+```bash
+npm run seed:capture
+```
+
+O script busca eventos na Discovery API, regrava a fixture e imprime o que
+capturou. Depois, `npm run seed` aplica ao banco — ou basta subir o contêiner.
 
 ---
 
@@ -192,13 +232,20 @@ Cada status e quando usá-lo: [`docs/rules/04-erros-e-api.md`](docs/rules/04-err
 
 ## Testes
 
-**45 testes** cobrindo o que existe hoje:
+**153 testes** em 13 suítes:
 
 | Suíte | Verifica |
 | --- | --- |
+| `auth.service` | Registro, login, refresh, hash da senha, papéis |
+| `route-policy` | Toda rota declara política de acesso — reprova se faltar |
+| `order-pricing` | Taxa de serviço, proteção, soma por ingresso |
+| `payment.service` | Aprovação e recusa do gateway simulado |
+| `gate.service` | Válido, inválido, já utilizado, evento errado |
+| `qr-code.util` | Assinatura HMAC e detecção de código adulterado |
+| `ticketmaster.mapper` | Mapeamento da Discovery API, campos omitidos, grafia de cidade |
+| `app` (Supertest) | Rotas, 404 em JSON, headers do helmet, CORS, contrato do Swagger |
 | `health.service` | Consulta real ao banco, degradação, não vazamento de credencial |
 | `error-handler` | Tradução de `AppError`, 500 genérico, ausência de vazamento |
-| `app` (Supertest) | Rotas, 404 em JSON, headers do helmet, CORS, contrato do Swagger |
 | `entities` | Registro explícito completo, `synchronize` desligado |
 | `env` | Segredos longos, distintos entre si, URL do front correta |
 | `app-error` | Formato `{ msg }` e ausência de mensagens duplicadas |
@@ -230,12 +277,17 @@ A conexão real com o Postgres é validada pelo healthcheck do Docker e por
 
 ## Limitações conhecidas
 
-- **Só `GET /api/health` funciona.** Auth, eventos, pedidos, ingressos e
-  portaria ainda não existem.
-- **Sem seeds.** Dependem dos módulos de negócio.
-- **Sem `TM_API_KEY`.** A integração com a Ticketmaster não foi exercitada
-  contra a API real. Chave gratuita em developer.ticketmaster.com.
-- **Testes usam dublê de banco.** Testes de integração com Postgres real estão
-  na fila.
+- **Nenhum evento do catálogo tem descrição.** A Discovery API não retorna
+  `info` nem `pleaseNote` em nenhum dos 30 eventos brasileiros capturados, e
+  também não fornece preço (`priceRanges` vem vazio). O preço de venda é
+  derivado do segmento na seed, como o organizador faria.
+- **Testes usam dublê de banco.** A conexão real é validada pelo healthcheck do
+  Docker e por `GET /api/health`, não por teste de integração com Postgres.
+- **Limite de 5 req/s da Ticketmaster é em memória.** Com várias instâncias da
+  API em paralelo o controle não vale; exigiria contador compartilhado (Redis).
+  Como a importação é ação pontual do organizador, não se justificou aqui.
+- **Upload em disco local.** Em hospedagem sem disco persistente, as capas
+  enviadas somem no restart. Registrado em
+  [`docs/NEXT-STEPS.md`](docs/NEXT-STEPS.md).
 - **A especificação tem 8 inconsistências**, 4 corrigidas e 4 registradas.
   Todas listadas em [`docs/PROGRESSO.md`](docs/PROGRESSO.md).

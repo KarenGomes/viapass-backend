@@ -9,6 +9,7 @@ import { Classification } from '../../modules/classifications/classification.ent
 import { ClassificationService } from '../../modules/classifications/classification.service'
 import { TicketmasterClient } from '../../modules/catalog/ticketmaster.client'
 import { mapEvent } from '../../modules/catalog/ticketmaster.mapper'
+import type { TMEvent } from '../../modules/catalog/ticketmaster.types'
 import { Event } from '../../modules/events/event.entity'
 import { EventService } from '../../modules/events/event.service'
 import { TicketPoolService } from '../../modules/tickets/ticket-pool.service'
@@ -19,16 +20,18 @@ import { TICKETMASTER_FIXTURES } from './fixtures/ticketmaster-events.fixture'
 
 /**
  * Popula o banco com os dados de teste exigidos pelo desafio (MER §8):
- * 1 organizador, 2 clientes, 1 usuário de portaria e eventos publicados com
- * ingressos disponíveis.
+ * 1 organizador, 2 clientes, 1 usuário de portaria e o catálogo de eventos
+ * publicados com ingressos disponíveis.
  *
  * **Idempotente.** Rodar duas vezes não duplica nada: usuários são buscados
- * por e-mail e eventos por `tm_event_id`. Uma seed que só funciona em banco
- * vazio é uma seed que ninguém roda de novo.
+ * por e-mail e eventos por `tm_event_id`. É o que permite rodar a seed a cada
+ * subida do contêiner (ver `npm run start:docker`) sem inflar o banco.
  *
- * **Offline.** Os eventos vêm de fixtures no formato real da Discovery API e
- * passam pelo mesmo mapeador da importação. Não depende de `TM_API_KEY` nem de
- * rede — e, de quebra, exercita o caminho de importação a cada execução.
+ * **Offline.** Os eventos vêm da fixture em `fixtures/`, gravada no formato
+ * cru da Discovery API por `npm run seed:capture`, e passam pelo mesmo
+ * `mapEvent` da importação real. Subir o projeto não depende de rede, de
+ * `TM_API_KEY` nem da cota da Ticketmaster — e o caminho de importação fica
+ * exercitado a cada execução.
  */
 
 interface SeedUser {
@@ -66,67 +69,117 @@ const SEED_USERS: SeedUser[] = [
   },
 ]
 
-/**
- * Configuração de venda por evento, aplicada depois da importação.
- *
- * A Discovery API não fornece capacidade, layout nem preço de venda (MER §6.1)
- * — é exatamente o que o organizador preenche antes de publicar. A seed faz o
- * mesmo, para que o estado final seja o de um evento realmente publicado.
- */
-const SALES_SETUP: Record<
-  string,
-  {
-    seatType: SeatType
-    totalCapacity?: number
-    price?: number
-    sections?: Array<{ name: string; rows: Array<{ label: string; seats: number }>; price: number }>
-  }
-> = {
-  'viapass-fixture-gala-opera': {
-    seatType: SeatType.MAPPED,
-    sections: [
-      {
-        name: 'Plateia A',
-        price: 200,
-        rows: [
-          { label: 'A', seats: 12 },
-          { label: 'B', seats: 12 },
-          { label: 'C', seats: 12 },
-        ],
-      },
-      {
-        name: 'Plateia B',
-        price: 140,
-        rows: [
-          { label: 'D', seats: 14 },
-          { label: 'E', seats: 14 },
-        ],
-      },
-      {
-        name: 'Mezanino',
-        price: 90,
-        rows: [
-          { label: 'F', seats: 10 },
-          { label: 'G', seats: 10 },
-        ],
-      },
-    ],
-  },
-  'viapass-fixture-cinema-jardim': {
-    seatType: SeatType.GENERAL_ADMISSION,
-    totalCapacity: 150,
-    price: 60,
-  },
-  // Fica em rascunho de propósito: o painel do organizador precisa de ao menos
-  // um evento não publicado para ter o que mostrar.
-  'viapass-fixture-exposicao': {
-    seatType: SeatType.GENERAL_ADMISSION,
-    totalCapacity: 80,
-    price: 45,
-  },
+interface SalesSetup {
+  seatType: SeatType
+  totalCapacity?: number
+  price?: number
+  sections?: Array<{ name: string; rows: Array<{ label: string; seats: number }>; price: number }>
 }
 
-const DRAFT_EVENTS = new Set(['viapass-fixture-exposicao'])
+/**
+ * Configuração de venda, derivada de cada evento em vez de tabelada.
+ *
+ * A Discovery API não fornece capacidade, layout nem preço de venda (MER §6.1)
+ * — é o que o organizador preenche antes de publicar, e a seed faz o mesmo
+ * para que o estado final seja o de um evento realmente publicado.
+ *
+ * Com trinta eventos vindos de um arquivo regenerável, tabelar a configuração
+ * por id não se sustenta: a cada `npm run seed:capture` os ids mudam e a
+ * tabela ficaria apontando para eventos que não existem mais, deixando tudo
+ * em rascunho sem aviso. Aqui a configuração é **derivada** do próprio evento,
+ * então qualquer catálogo capturado já entra publicado.
+ *
+ * A derivação é determinística: mesma fixture, mesmo banco em toda execução.
+ * A variação vem de um hash estável do id — não de `Math.random()`, que faria
+ * dois `docker compose up` produzirem catálogos diferentes.
+ */
+function salesSetupFor(event: TMEvent): SalesSetup {
+  const seed = hash(event.id)
+  const price = priceFor(event, seed)
+
+  // Um terço com mapa de assentos: o suficiente para exercitar a tela de
+  // seleção sem gerar dezenas de milhares de ingressos na subida do contêiner.
+  if (seed % 3 === 0) {
+    return { seatType: SeatType.MAPPED, sections: sectionsFor(seed, price) }
+  }
+
+  return {
+    seatType: SeatType.GENERAL_ADMISSION,
+    // 120 a 400 lugares, em passos de 40.
+    totalCapacity: 120 + (seed % 8) * 40,
+    price,
+  }
+}
+
+/**
+ * Preço do ingresso, em reais.
+ *
+ * Quando a Ticketmaster informa faixa de preço, ela vale — é dado real do
+ * evento. O catálogo brasileiro raramente traz `priceRanges`, e nesse caso o
+ * valor sai do segmento, que é o que melhor separa um show de arena de uma
+ * peça de teatro.
+ */
+function priceFor(event: TMEvent, seed: number): number {
+  const informed = event.priceRanges?.[0]?.min
+
+  if (typeof informed === 'number' && informed > 0) {
+    return Math.round(informed)
+  }
+
+  const segment = event.classifications?.[0]?.segment?.name
+
+  if (segment === 'Sports') return 90 + (seed % 10) * 25
+  if (segment === 'Arts & Theatre') return 60 + (seed % 8) * 20
+
+  // Music e demais: faixa mais larga, como num show.
+  return 80 + (seed % 12) * 30
+}
+
+/**
+ * Setores do mapa de assentos.
+ *
+ * Três faixas de preço a partir do valor base, como numa casa de espetáculo:
+ * a plateia próxima custa o dobro do mezanino.
+ */
+function sectionsFor(seed: number, price: number): SalesSetup['sections'] {
+  // 8 a 12 assentos por fileira.
+  const perRow = 8 + (seed % 5)
+
+  return [
+    {
+      name: 'Plateia A',
+      price: price * 2,
+      rows: ['A', 'B', 'C'].map((label) => ({ label, seats: perRow })),
+    },
+    {
+      name: 'Plateia B',
+      price: Math.round(price * 1.4),
+      rows: ['D', 'E'].map((label) => ({ label, seats: perRow })),
+    },
+    {
+      name: 'Mezanino',
+      price,
+      rows: ['F', 'G'].map((label) => ({ label, seats: perRow })),
+    },
+  ]
+}
+
+/**
+ * FNV-1a de 32 bits.
+ *
+ * Só precisa ser estável e bem distribuído — não é uso criptográfico. O ponto
+ * é que o mesmo id gere sempre a mesma configuração, em qualquer máquina.
+ */
+function hash(value: string): number {
+  let result = 0x811c9dc5
+
+  for (let index = 0; index < value.length; index += 1) {
+    result ^= value.charCodeAt(index)
+    result = Math.imul(result, 0x01000193)
+  }
+
+  return Math.abs(result)
+}
 
 export async function runSeeds(dataSource: DataSource): Promise<void> {
   const users = await seedUsers(dataSource)
@@ -213,12 +266,7 @@ async function seedEvents(dataSource: DataSource, organizerId: string): Promise<
       console.log(`  · evento em rascunho, retomando configuração: ${fixture.name}`)
     }
 
-    const setup = SALES_SETUP[fixture.id]
-
-    if (!setup) {
-      console.log(`  · sem configuração de venda, mantido em rascunho: ${fixture.name}`)
-      continue
-    }
+    const setup = salesSetupFor(fixture)
 
     /**
      * O tipo de assento vem **antes** do resto: `update` consulta
@@ -241,11 +289,6 @@ async function seedEvents(dataSource: DataSource, organizerId: string): Promise<
       },
       organizerId,
     )
-
-    if (DRAFT_EVENTS.has(fixture.id)) {
-      console.log(`  · configurado e mantido em rascunho: ${fixture.name}`)
-      continue
-    }
 
     const { ticketsCreated } = await service.publish(event.id, organizerId)
 

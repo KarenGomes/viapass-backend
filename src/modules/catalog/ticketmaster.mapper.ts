@@ -104,6 +104,41 @@ export function mapStatus(code: string | undefined): EventStatus {
   }
 }
 
+/**
+ * Conectivos que ficam em minúscula no meio de um topônimo em português.
+ * "Rio de Janeiro", não "Rio De Janeiro".
+ */
+const LOWERCASE_PARTICLES = new Set(['de', 'da', 'do', 'das', 'dos', 'e'])
+
+/**
+ * Uniformiza a grafia da cidade.
+ *
+ * A Discovery API devolve a mesma cidade com capitalização variável — no mesmo
+ * lote vieram "Rio De Janeiro" e "Rio de Janeiro". O filtro de local da home
+ * agrupa por `venue.city`, então as duas grafias viram duas opções distintas
+ * para a mesma cidade, cada uma com parte dos eventos.
+ *
+ * Normalizar aqui, e não na consulta, mantém a correção num só lugar: é a
+ * fronteira onde o formato externo deixa de existir, e vale tanto para a seed
+ * quanto para a importação que o organizador dispara.
+ */
+function normalizeCityName(city: string | undefined): string | null {
+  if (!city) return null
+
+  const normalized = city
+    .trim()
+    .toLocaleLowerCase('pt-BR')
+    .split(/\s+/)
+    .map((word, index) =>
+      index > 0 && LOWERCASE_PARTICLES.has(word)
+        ? word
+        : word.charAt(0).toLocaleUpperCase('pt-BR') + word.slice(1),
+    )
+    .join(' ')
+
+  return normalized === '' ? null : normalized
+}
+
 export function mapVenue(venue: TMVenue | undefined): NormalizedVenue | null {
   if (!venue?.name) return null
 
@@ -111,7 +146,7 @@ export function mapVenue(venue: TMVenue | undefined): NormalizedVenue | null {
     tmVenueId: venue.id ?? null,
     name: venue.name,
     addressLine1: venue.address?.line1 ?? null,
-    city: venue.city?.name ?? null,
+    city: normalizeCityName(venue.city?.name),
     stateCode: venue.state?.stateCode ?? null,
     countryCode: venue.country?.countryCode ?? null,
     postalCode: venue.postalCode ?? null,

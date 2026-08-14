@@ -72,6 +72,10 @@ export class CreateEventDTO {
   @IsString({ message: 'Descrição inválida' })
   description?: string
 
+  @IsOptional()
+  @IsString({ message: 'URL da imagem inválida' })
+  imageUrl?: string
+
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Data deve estar no formato YYYY-MM-DD' })
   eventDate!: string
 
@@ -114,6 +118,7 @@ export class CreateEventDTO {
 export class UpdateEventDTO {
   @IsOptional() @IsString() @Length(2, 255) name?: string
   @IsOptional() @IsString() description?: string
+  @IsOptional() @IsString() imageUrl?: string
 
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Data deve estar no formato YYYY-MM-DD' })

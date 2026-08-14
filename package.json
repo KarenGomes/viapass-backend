@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/server.ts",
+    "start:docker": "npm run migration:run && npm run seed && npm run dev",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
@@ -21,6 +22,7 @@
     "migration:revert": "tsx ./node_modules/typeorm/cli.js migration:revert -d src/config/database.ts",
     "migration:show": "tsx ./node_modules/typeorm/cli.js migration:show -d src/config/database.ts",
     "seed": "tsx src/database/seeds/seed-runner.ts",
+    "seed:capture": "tsx src/database/seeds/capture-ticketmaster.ts",
     "verify": "npm run lint && npm run typecheck && npm run test"
   },
   "dependencies": {
@@ -34,6 +36,7 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.2.0",
     "pg": "^8.13.1",
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
@@ -49,6 +52,7 @@
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/jsonwebtoken": "^9.0.7",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.10.6",
     "@types/qrcode": "^1.5.5",
     "@types/supertest": "^6.0.2",

@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 import express from 'express'
 import type { Express } from 'express'
 import cors from 'cors'
@@ -34,9 +36,33 @@ export function createApp(): Express {
       // A UI do Swagger carrega estilos e scripts próprios; a CSP padrão do
       // helmet os bloquearia.
       contentSecurityPolicy: false,
+      // O padrão (`same-origin`) faria o navegador recusar as imagens de
+      // `/uploads` ao serem exibidas pelo front-end, que roda em outra origem.
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   )
   app.use(cors(corsOptions))
+
+  /**
+   * Arquivos enviados pelo organizador.
+   *
+   * Antes do rate limiter de propósito: uma página com vários cards dispara
+   * uma requisição por imagem, e sob o limite da API a grade começaria a
+   * falhar com 429 justamente nas telas mais cheias.
+   *
+   * Arquivo inexistente segue a cadeia até o `notFoundHandler`, que responde
+   * 404 em JSON como o resto da API. (`fallthrough: false` devolveria o erro
+   * ao tratador global, que não reconhece o erro do `serve-static` e o
+   * converteria em 500 — status errado e ruído no log a cada capa removida.)
+   */
+  app.use(
+    '/uploads',
+    express.static(path.join(process.cwd(), 'public', 'uploads'), {
+      index: false,
+      maxAge: '1d',
+    }),
+  )
+
   app.use(apiRateLimiter)
   app.use(express.json({ limit: '1mb' }))
   app.use(express.urlencoded({ extended: true }))

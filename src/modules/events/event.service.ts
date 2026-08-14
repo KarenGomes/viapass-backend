@@ -370,7 +370,17 @@ export class EventService {
       saleEnd: dto.saleEnd ? new Date(dto.saleEnd) : null,
     })
 
-    return this.events.save(event)
+    const saved = await this.events.save(event)
+
+    if (dto.imageUrl) {
+      await this.dataSource.getRepository(EventImage).insert({
+        eventId: saved.id,
+        url: dto.imageUrl,
+        isFallback: false,
+      })
+    }
+
+    return saved
   }
 
   /**
@@ -506,7 +516,23 @@ export class EventService {
       event.status = dto.status
     }
 
-    return this.events.save(event)
+    const saved = await this.events.save(event)
+
+    if (dto.imageUrl !== undefined) {
+      const imageRepo = this.dataSource.getRepository(EventImage)
+      if (dto.imageUrl === '') {
+        await imageRepo.delete({ eventId: saved.id })
+      } else {
+        const existing = await imageRepo.findOne({ where: { eventId: saved.id, isFallback: false } })
+        if (existing) {
+          await imageRepo.update({ id: existing.id }, { url: dto.imageUrl })
+        } else {
+          await imageRepo.insert({ eventId: saved.id, url: dto.imageUrl, isFallback: false })
+        }
+      }
+    }
+
+    return saved
   }
 
   /**

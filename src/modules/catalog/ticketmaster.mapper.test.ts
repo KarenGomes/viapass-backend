@@ -1,5 +1,4 @@
 import { EventStatus } from '../../shared/types/enums'
-import { TICKETMASTER_FIXTURES } from '../../database/seeds/fixtures/ticketmaster-events.fixture'
 import {
   mapClassification,
   mapEvent,
@@ -14,9 +13,79 @@ import type { TMEvent } from './ticketmaster.types'
  * opcional, e tratar como obrigatório o que ela considera opcional é a origem
  * mais comum de crash na importação — por isso os testes de omissão pesam mais
  * aqui que os do caminho feliz.
+ *
+ * As fixtures são declaradas aqui, e não lidas da seed: aquele arquivo é
+ * gerado por `npm run seed:capture` e muda a cada renovação do catálogo.
+ * Amarrar asserção de unidade a ele faria a suíte quebrar por atualizar dado
+ * de demonstração — falha sem defeito, que ensina a equipe a ignorar a suíte.
  */
 
-const [gala, cinema, exposicao] = TICKETMASTER_FIXTURES as [TMEvent, TMEvent, TMEvent]
+/** Evento completo: todo campo opcional preenchido. */
+const COMPLETO: TMEvent = {
+  id: 'teste-gala-opera',
+  name: 'Gala na Ópera',
+  info: 'Uma noite de esplendor clássico com a orquestra sinfônica da casa.',
+  pleaseNote: 'Traje social obrigatório.',
+  images: [
+    { ratio: '16_9', url: 'https://exemplo.test/gala-1600.jpg', width: 1600, height: 900 },
+    { ratio: '3_2', url: 'https://exemplo.test/gala-640.jpg', width: 640, height: 427 },
+  ],
+  dates: {
+    start: { localDate: '2026-11-15', localTime: '20:00:00', dateTime: '2026-11-15T23:00:00Z' },
+    timezone: 'America/Sao_Paulo',
+    status: { code: 'onsale' },
+  },
+  classifications: [
+    {
+      primary: true,
+      segment: { id: 'KZFz7v7nJ', name: 'Arts & Theatre' },
+      genre: { id: 'KnvZ7v7nI', name: 'Opera' },
+    },
+  ],
+  priceRanges: [{ type: 'standard', currency: 'BRL', min: 120, max: 890 }],
+  seatmap: { staticUrl: 'https://exemplo.test/mapa.png' },
+  _embedded: {
+    venues: [
+      {
+        id: 'teste-teatro-municipal',
+        name: 'Teatro Municipal de São Paulo',
+        postalCode: '01037-010',
+        timezone: 'America/Sao_Paulo',
+        city: { name: 'São Paulo' },
+        state: { name: 'São Paulo', stateCode: 'SP' },
+        country: { name: 'Brazil', countryCode: 'BR' },
+        address: { line1: 'Praça Ramos de Azevedo, s/n' },
+        location: { latitude: '-23.5453', longitude: '-46.6388' },
+      },
+    ],
+    attractions: [{ id: 'teste-atracao', name: 'Orquestra Sinfônica' }],
+  },
+}
+
+/** Hora ainda não anunciada e sem faixa de preço. */
+const SEM_HORA: TMEvent = {
+  id: 'teste-exposicao',
+  name: 'Exposição Avant-Garde',
+  images: [{ ratio: '16_9', url: 'https://exemplo.test/expo.jpg', width: 1600, height: 900 }],
+  dates: {
+    start: { localDate: '2026-11-18', timeTBA: true },
+    status: { code: 'onsale' },
+  },
+}
+
+/** Sem atrações associadas — comum em sessão de cinema. */
+const SEM_ATRACOES: TMEvent = {
+  id: 'teste-cinema',
+  name: 'Cinema no Jardim Botânico',
+  images: [{ ratio: '16_9', url: 'https://exemplo.test/cinema.jpg', width: 1600, height: 900 }],
+  dates: {
+    start: { localDate: '2026-11-22', localTime: '19:30:00' },
+    status: { code: 'onsale' },
+  },
+  _embedded: {
+    venues: [{ id: 'teste-jardim', name: 'Jardim Botânico', city: { name: 'Rio de Janeiro' } }],
+  },
+}
 
 describe('mapStatus', () => {
   it.each([
@@ -38,7 +107,7 @@ describe('mapStatus', () => {
 
 describe('mapVenue', () => {
   it('extrai endereço, cidade e coordenadas', () => {
-    const venue = mapVenue(gala._embedded?.venues?.[0])
+    const venue = mapVenue(COMPLETO._embedded?.venues?.[0])
 
     expect(venue).toMatchObject({
       name: 'Teatro Municipal de São Paulo',
@@ -58,6 +127,32 @@ describe('mapVenue', () => {
     const venue = mapVenue({ name: 'Local Só Com Nome' })
 
     expect(venue).toMatchObject({ city: null, countryCode: null, latitude: null })
+  })
+
+  /**
+   * A API devolve a mesma cidade com capitalização variável. Sem uniformizar,
+   * o filtro de local da home agrupa por texto e lista a cidade duas vezes,
+   * cada uma com parte dos eventos.
+   */
+  it.each([
+    ['Rio De Janeiro', 'Rio de Janeiro'],
+    ['rio de janeiro', 'Rio de Janeiro'],
+    ['SÃO PAULO', 'São Paulo'],
+    ['são caetano do sul', 'São Caetano do Sul'],
+    ['  Curitiba  ', 'Curitiba'],
+  ])('uniformiza a grafia da cidade: %s → %s', (entrada, esperado) => {
+    expect(mapVenue({ name: 'Local', city: { name: entrada } })?.city).toBe(esperado)
+  })
+
+  it('mantém as duas grafias da API convergindo para a mesma cidade', () => {
+    const primeira = mapVenue({ name: 'A', city: { name: 'Rio De Janeiro' } })
+    const segunda = mapVenue({ name: 'B', city: { name: 'Rio de Janeiro' } })
+
+    expect(primeira?.city).toBe(segunda?.city)
+  })
+
+  it('trata cidade vazia como ausente', () => {
+    expect(mapVenue({ name: 'Local', city: { name: '   ' } })?.city).toBeNull()
   })
 })
 
@@ -118,10 +213,10 @@ describe('pickBestImage', () => {
 
 describe('mapEvent', () => {
   it('mapeia o evento completo', () => {
-    const result = mapEvent(gala)
+    const result = mapEvent(COMPLETO)
 
     expect(result).toMatchObject({
-      tmEventId: 'viapass-fixture-gala-opera',
+      tmEventId: 'teste-gala-opera',
       name: 'Gala na Ópera',
       eventDate: '2026-11-15',
       eventTime: '20:00:00',
@@ -134,27 +229,27 @@ describe('mapEvent', () => {
   })
 
   it('junta info e pleaseNote na descrição', () => {
-    const result = mapEvent(gala)
+    const result = mapEvent(COMPLETO)
 
     expect(result?.description).toContain('esplendor clássico')
     expect(result?.description).toContain('Traje social')
   })
 
   it('trata timeTBA como hora indefinida, não como meia-noite', () => {
-    const result = mapEvent(exposicao)
+    const result = mapEvent(SEM_HORA)
 
     expect(result?.eventTime).toBeNull()
     expect(result?.eventDate).toBe('2026-11-18')
   })
 
   it('lida com evento sem atrações', () => {
-    const result = mapEvent(cinema)
+    const result = mapEvent(SEM_ATRACOES)
 
     expect(result?.attractions).toEqual([])
   })
 
   it('lida com evento sem faixa de preço', () => {
-    const result = mapEvent(exposicao)
+    const result = mapEvent(SEM_HORA)
 
     expect(result?.priceRanges).toEqual([])
   })
