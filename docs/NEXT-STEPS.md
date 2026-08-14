@@ -5,6 +5,23 @@ nunca viu o projeto começar sem perguntar nada.
 
 ---
 
+## Concluído — 2026-08-14 (imagem de produção publicável)
+
+- [x] `CMD` de produção roda migrations e seed antes de servir
+- [x] Pasta de upload criada com dono correto (imagem não subia como `node`)
+- [x] Suporte a `DATABASE_URL` e `DB_SSL`
+- [x] `DB_HOST` obrigatória em produção, com mensagem explicando o que falta
+- [x] Seção "Publicar" no README, com o mínimo de variáveis
+
+### Surgiu
+
+- [ ] Sem volume persistente, os uploads somem a cada restart. Migrar para
+      storage externo (Supabase Storage, S3) resolveria de vez.
+- [ ] A seed roda a cada deploy. É idempotente, mas some com o primeiro boot
+      por ~40s. Avaliar rodar só quando o banco estiver vazio.
+
+---
+
 ## Concluído — 2026-08-14 (catálogo real e seed automática)
 
 - [x] `npm run seed:capture` para capturar eventos reais da Discovery API

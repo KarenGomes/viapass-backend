@@ -127,6 +127,45 @@ capturou. Depois, `npm run seed` aplica ao banco — ou basta subir o contêiner
 
 ---
 
+## Publicar (Render, Fly, Railway)
+
+Hospedagem que constrói a imagem direto do Dockerfile **não lê o
+`docker-compose.yml`**. O `CMD` do estágio `production` já cobre isso: roda
+migrations, depois a seed, depois o servidor. Não é preciso configurar comando
+de start, nem `BUILD_TARGET` — o último estágio do Dockerfile é o de produção.
+
+Também **não crie um `.env` de produção**: ele está no `.dockerignore` e não
+entraria na imagem. As variáveis vão no painel do provedor.
+
+O mínimo para subir:
+
+```
+DATABASE_URL        postgresql://usuario:senha@host:5432/banco
+JWT_SECRET          32+ caracteres
+JWT_REFRESH_SECRET  32+ caracteres, diferente do anterior
+TICKET_HMAC_SECRET  32+ caracteres
+CORS_ORIGINS        https://url-do-front-end
+APP_BASE_URL        https://url-do-front-end
+```
+
+No lugar de `DATABASE_URL`, dá para usar `DB_HOST`, `DB_PORT`, `DB_USERNAME`,
+`DB_PASSWORD` e `DB_DATABASE`. Use o endereço **interno** do banco quando o
+provedor oferecer; o externo costuma exigir `DB_SSL=true`.
+
+`PORT` não precisa ser definida — o provedor injeta e a aplicação respeita.
+
+Gere os segredos com:
+
+```bash
+node -e "const c=require('crypto');['JWT_SECRET','JWT_REFRESH_SECRET','TICKET_HMAC_SECRET'].forEach(k=>console.log(k+'='+c.randomBytes(32).toString('hex')))"
+```
+
+> **Disco efêmero.** Onde não há volume persistente, as capas enviadas pelo
+> organizador somem a cada restart — as linhas ficam no banco apontando para
+> arquivos que não existem mais. A seed repõe o catálogo, não os uploads.
+
+---
+
 ## Rodar sem Docker
 
 Requisitos: Node 20+ e um PostgreSQL 16 acessível.

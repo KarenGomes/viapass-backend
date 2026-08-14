@@ -15,7 +15,7 @@ import { API_PREFIX } from './shared/constants'
  */
 async function bootstrap(): Promise<void> {
   await AppDataSource.initialize()
-  console.log(`[db] conectado a ${env.DB_HOST}:${env.DB_PORT}/${env.DB_DATABASE}`)
+  console.log(`[db] conectado a ${describeDatabase()}`)
 
   const pending = await AppDataSource.showMigrations()
   if (pending) {
@@ -30,6 +30,28 @@ async function bootstrap(): Promise<void> {
   })
 
   registerShutdown(server)
+}
+
+/**
+ * Onde a aplicação se conectou, para o log de inicialização.
+ *
+ * Com `DATABASE_URL`, os campos avulsos ficam vazios e a linha sairia como
+ * `conectado a :5432/`. A URL traz a senha embutida, então só host e nome do
+ * banco são impressos — log de boot não é lugar para credencial.
+ */
+function describeDatabase(): string {
+  if (!env.DATABASE_URL) {
+    return `${env.DB_HOST}:${env.DB_PORT}/${env.DB_DATABASE}`
+  }
+
+  try {
+    const url = new URL(env.DATABASE_URL)
+
+    return `${url.hostname}:${url.port || '5432'}${url.pathname}`
+  } catch {
+    // URL malformada não derruba o boot: quem valida a conexão é o driver.
+    return 'DATABASE_URL'
+  }
 }
 
 /**

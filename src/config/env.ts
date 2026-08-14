@@ -64,6 +64,20 @@ function secret(key: string, minLength = 32): string {
   return value
 }
 
+function boolean(key: string, fallback: boolean): boolean {
+  const raw = process.env[key]
+
+  if (raw === undefined || raw.trim() === '') return fallback
+
+  const normalized = raw.trim().toLowerCase()
+
+  if (normalized === 'true' || normalized === '1') return true
+  if (normalized === 'false' || normalized === '0') return false
+
+  problems.push(`${key} deve ser true ou false (recebido: "${raw}")`)
+  return fallback
+}
+
 function nodeEnv(): NodeEnv {
   const value = optional('NODE_ENV', 'development')
 
@@ -77,6 +91,43 @@ function nodeEnv(): NodeEnv {
 
 const NODE_ENV = nodeEnv()
 
+const hasDatabaseUrl = (process.env.DATABASE_URL ?? '').trim() !== ''
+
+/** Com `DATABASE_URL` presente, os campos avulsos não são cobrados. */
+function requiredUnlessUrl(key: string): string {
+  if (hasDatabaseUrl) return process.env[key] ?? ''
+
+  return required(key)
+}
+
+/**
+ * Host do banco.
+ *
+ * Em produção não há padrão: `localhost` como fallback transforma "esqueci de
+ * configurar" em "conectando em mim mesmo", e o erro só aparece como
+ * `ECONNREFUSED 127.0.0.1:5432` depois da imagem construída e publicada.
+ * Configuração faltando tem que falhar dizendo o que falta.
+ */
+function databaseHost(): string {
+  if (hasDatabaseUrl) return ''
+
+  const value = process.env.DB_HOST
+
+  if (value === undefined || value.trim() === '') {
+    if (NODE_ENV === 'production') {
+      problems.push(
+        'DB_HOST é obrigatória em produção (ou use DATABASE_URL). ' +
+          'Sem ela a aplicação tentaria conectar em localhost, onde não há banco.',
+      )
+      return ''
+    }
+
+    return 'localhost'
+  }
+
+  return value
+}
+
 export const env = {
   NODE_ENV,
   isProduction: NODE_ENV === 'production',
@@ -84,11 +135,29 @@ export const env = {
 
   PORT: integer('PORT', 3001),
 
-  DB_HOST: optional('DB_HOST', 'localhost'),
+  /**
+   * Connection string completa. Quando presente, vence os campos avulsos.
+   *
+   * É o formato que Render, Fly, Railway e Heroku entregam pronto — colar uma
+   * variável em vez de transcrever cinco elimina o erro de digitação que só
+   * aparece no deploy.
+   */
+  DATABASE_URL: optional('DATABASE_URL', ''),
+
+  DB_HOST: databaseHost(),
   DB_PORT: integer('DB_PORT', 5432),
-  DB_USERNAME: required('DB_USERNAME'),
-  DB_PASSWORD: required('DB_PASSWORD'),
-  DB_DATABASE: required('DB_DATABASE'),
+  DB_USERNAME: requiredUnlessUrl('DB_USERNAME'),
+  DB_PASSWORD: requiredUnlessUrl('DB_PASSWORD'),
+  DB_DATABASE: requiredUnlessUrl('DB_DATABASE'),
+
+  /**
+   * TLS na conexão com o banco.
+   *
+   * Postgres gerenciado exige TLS no endereço externo e dispensa no interno.
+   * O certificado costuma ser assinado por CA própria do provedor, então a
+   * verificação da cadeia fica desligada — ver `database.ts`.
+   */
+  DB_SSL: boolean('DB_SSL', false),
 
   JWT_SECRET: secret('JWT_SECRET'),
   JWT_EXPIRES_IN: optional('JWT_EXPIRES_IN', '15m'),

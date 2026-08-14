@@ -20,6 +20,55 @@ Histórico do que foi feito, em ordem cronológica inversa. Regra em
 
 ---
 
+## 2026-08-14 — Imagem de produção e configuração de banco por URL
+
+O primeiro deploy no Render falhou. Três defeitos, todos invisíveis em
+desenvolvimento porque o compose escondia cada um.
+
+### Feito
+
+- `CMD` do estágio `production` roda migrations e seed antes de servir.
+- Pasta de upload criada com dono correto antes do `USER node`.
+- Suporte a `DATABASE_URL` e a `DB_SSL`.
+- `DB_HOST` passou a ser obrigatória em produção.
+- Seção **Publicar** no README.
+
+### Decisões
+
+**O `CMD` precisa fazer o que o compose fazia.** Migrations e seed rodavam pelo
+`command:` do `docker-compose.yml`, que só existe localmente. Quem constrói a
+imagem direto do Dockerfile subia contra um banco sem schema. O `CMD` de
+produção agora encadeia as três etapas, e a idempotência da seed mantém o
+redeploy seguro.
+
+**A imagem de produção não subia.** O módulo de upload cria `public/uploads` ao
+carregar, e o estágio final roda como `node` enquanto `/app` pertence ao root:
+`EACCES` antes do primeiro request. Nunca apareceu localmente porque o estágio
+de desenvolvimento roda como root. A pasta passou a ser criada no build, com
+`chown`.
+
+**`DB_HOST` sem padrão em produção.** Era `optional('DB_HOST', 'localhost')`, o
+que transformava "esqueci de configurar" em "conectando em mim mesmo" — a
+aplicação passava na validação e só quebrava no driver, com
+`ECONNREFUSED 127.0.0.1:5432`, depois da imagem construída e publicada. Agora
+falha na largada dizendo o que falta. Fora de produção o padrão continua.
+
+**`DATABASE_URL` vence os campos avulsos.** É o formato que os provedores
+entregam pronto; transcrevê-lo em cinco variáveis é o tipo de erro que só
+aparece no deploy. `DB_SSL` acompanha porque o endereço externo do Postgres
+gerenciado exige TLS, com `rejectUnauthorized: false` — o certificado é
+assinado por CA do provedor, não por CA pública.
+
+### Verificação
+
+`npm run verify` — 162 testes (eram 153; +9 de configuração de banco). A imagem
+`production` foi construída e executada contra o Postgres em três cenários:
+com `DATABASE_URL`, com campos avulsos e **sem** `DB_HOST` — este último
+falhando com a mensagem correta em vez de `ECONNREFUSED`. Nos dois primeiros,
+migrations e seed rodaram e a API serviu na porta injetada por variável.
+
+---
+
 ## 2026-08-14 — Catálogo real na seed e seed automática no Docker
 
 Substituição das 3 fixtures escritas à mão por 30 eventos reais capturados da

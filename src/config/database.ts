@@ -18,13 +18,32 @@ import { OrderFees1754200000000 } from '../database/migrations/1754200000000-Ord
  * por inferência esconde o que mudou e não sobrevive à primeira divergência
  * entre duas máquinas. Toda alteração passa por migration versionada.
  */
+/**
+ * Como chegar ao banco.
+ *
+ * `DATABASE_URL` vence quando existe: é o que o provedor entrega pronto, e
+ * transcrevê-la em cinco campos é convite a erro de digitação que só aparece
+ * no deploy.
+ *
+ * `rejectUnauthorized: false` porque o certificado do Postgres gerenciado é
+ * assinado por CA própria do provedor, não por uma CA pública — a verificação
+ * da cadeia falharia mesmo com o servidor correto. O tráfego continua
+ * cifrado; o que se abre mão é da checagem de quem assinou.
+ */
+const connection = env.DATABASE_URL
+  ? { url: env.DATABASE_URL }
+  : {
+      host: env.DB_HOST,
+      port: env.DB_PORT,
+      username: env.DB_USERNAME,
+      password: env.DB_PASSWORD,
+      database: env.DB_DATABASE,
+    }
+
 export const AppDataSource = new DataSource({
   type: 'postgres',
-  host: env.DB_HOST,
-  port: env.DB_PORT,
-  username: env.DB_USERNAME,
-  password: env.DB_PASSWORD,
-  database: env.DB_DATABASE,
+  ...connection,
+  ssl: env.DB_SSL ? { rejectUnauthorized: false } : false,
 
   synchronize: false,
   logging: env.NODE_ENV === 'development' ? ['error', 'warn', 'migration'] : ['error'],
