@@ -3,8 +3,25 @@
 API da plataforma de eventos e ingressos ViaPass (Desafio Elite Dev).
 
 > **Estado atual:** todos os requisitos de back-end do desafio estão
-> implementados e cobertos por testes. 33 operações em 28 rotas, 153 testes
+> implementados e cobertos por testes. 33 operações em 28 rotas, 162 testes
 > passando. Um `docker compose up` sobe a API já com o banco populado.
+
+## Aplicação publicada
+
+| Recurso | Endereço |
+| --- | --- |
+| Aplicação | https://viapass-frontend.vercel.app |
+| API | https://viapass-backend.onrender.com/api |
+| Swagger | https://viapass-backend.onrender.com/docs/ |
+
+> **Antes de testar:** o back-end está no plano gratuito do Render, que suspende
+> o serviço após um período de inatividade. A primeira requisição pode levar
+> cerca de 40 segundos para responder enquanto o servidor reinicia — aguarde o
+> carregamento inicial em vez de concluir que está fora do ar.
+>
+> O plano gratuito também não mantém disco persistente: as imagens enviadas
+> pelo organizador podem desaparecer quando o serviço reinicia. As capas dos 30
+> eventos do catálogo não são afetadas, porque vêm do CDN da Ticketmaster.
 
 ---
 
@@ -330,3 +347,69 @@ A conexão real com o Postgres é validada pelo healthcheck do Docker e por
   [`docs/NEXT-STEPS.md`](docs/NEXT-STEPS.md).
 - **A especificação tem 8 inconsistências**, 4 corrigidas e 4 registradas.
   Todas listadas em [`docs/PROGRESSO.md`](docs/PROGRESSO.md).
+
+---
+
+## Melhorias futuras
+
+O que ficou mapeado para uma próxima iteração, com o motivo de cada um.
+
+**Imagens no Supabase Storage** em vez de servidas de forma estática. Hoje o
+upload vai para o disco do contêiner; em hospedagem gratuita, sem volume
+persistente, os arquivos somem no restart e o banco fica apontando para
+caminhos que não existem mais. Um storage externo (plano gratuito) resolve sem
+custo.
+
+**Responsividade em algumas interfaces.** O filtro da Home não segue boas
+práticas de usabilidade e o texto está sendo cortado em telas menores.
+
+**Mapa de assentos adaptado ao tipo de evento.** Hoje o layout é sempre o
+mesmo — palco, plateias e mezanino — herdado de teatro e cinema, e não reflete
+arenas, estádios ou festivais.
+
+**Exibição dos lugares em relação à Ticketmaster.** A Discovery API não fornece
+capacidade nem mapa de assentos, então a plataforma gera esses dados a partir
+da própria base. Aproximar o que é exibido do evento real depende de outra
+fonte.
+
+### Defeitos conhecidos
+
+**Usuário deslogado consegue favoritar** eventos na tela inicial. O favorito é
+salvo apenas no navegador (`localStorage`), sem vínculo com a conta. A correção
+seria exibir um modal informando que é preciso entrar para favoritar.
+
+**Compra bem-sucedida não redireciona.** Ao concluir a compra, o usuário
+deveria ir para a página de pedidos, mas permanece numa tela vazia.
+
+**A tela do QR não recarrega ao ser validado.** A validação funciona
+corretamente na portaria, mas o cliente não recebe retorno instantâneo de que o
+ingresso foi aceito — a tela só reflete o novo estado ao ser recarregada à mão.
+
+---
+
+## Como a IA foi usada
+
+**Design.** Usei o Stitch, do Google, para prototipar o fluxo inicial do
+cliente e depois exportei para o Figma, onde finalizei as edições — evitando o
+aspecto de interface gerada ("IA slop"), que sai igual em todo projeto.
+Arquivo: [Figma da comunidade](https://www.figma.com/community/file/1669377339509757604).
+
+**Levantamento.** Como apoio para estudar a API Ticketmaster Discovery, no
+levantamento de requisitos, na modelagem do MER e na definição de uma
+arquitetura organizada em módulos.
+
+**Guardrails de IA.** No desenvolvimento, criei testes automatizados que barram
+o que costuma passar despercebido em código gerado: valores visuais fora dos
+tokens do design system e dependências entre camadas na direção errada. Além
+dos testes unitários obrigatórios, eles impedem que uma sessão de IA quebre
+decisões já tomadas no projeto. O motivo de existirem é que código gerado
+raramente falha quebrando — ele falha **passando nos testes fazendo a coisa
+errada**.
+
+**Histórico versionado de decisões.** [`docs/PROGRESSO.md`](docs/PROGRESSO.md)
+e [`docs/NEXT-STEPS.md`](docs/NEXT-STEPS.md) registram o que foi feito, o que
+foi descartado e por quê, para que outra sessão retome o contexto sem alucinar
+nem refazer o que já existe.
+
+**Desenvolvimento.** Usei a inteligência artificial para agilizar a escrita do
+código.
