@@ -14,6 +14,22 @@ export const PAGINATION = {
 /** Custo do bcrypt. 12 rounds conforme MER §3.1. */
 export const BCRYPT_ROUNDS = 12
 
+/**
+ * Cobranças do checkout.
+ *
+ * Ficam aqui, e não espalhadas no service, porque são regra de negócio que
+ * muda por decisão comercial — e quem for mexer precisa achar num lugar só.
+ *
+ * A taxa de serviço é percentual sobre os ingressos; a proteção é valor fixo
+ * por ingresso, como o design descreve ("R$ 15,00 por ingresso").
+ */
+export const CHECKOUT_FEES = {
+  /** 10% sobre o subtotal. */
+  SERVICE_FEE_RATE: 0.1,
+  /** Proteção contra imprevistos, por ingresso. */
+  PROTECTION_FEE_PER_TICKET: 15,
+} as const
+
 /** Validade do link de compartilhamento de ingresso (MER §3.13). */
 export const SHARE_LINK_TTL_HOURS = 48
 

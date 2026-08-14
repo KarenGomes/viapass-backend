@@ -14,6 +14,7 @@ import { Ticket } from '../tickets/ticket.entity'
 import { Order } from './order.entity'
 import { OrderItem } from './order-item.entity'
 import type { CreateOrderDTO, PayOrderDTO } from './order.dto'
+import { calculateOrderAmounts } from './order-pricing'
 import type { PaymentService } from './payment.service'
 
 export class OrderService {
@@ -57,15 +58,24 @@ export class OrderService {
           ? await this.reserveChosenSeats(manager, event, dto, userId)
           : await this.reserveAnySeats(manager, event, dto, userId)
 
-      const unitPrice = this.priceFor(event, tickets[0]?.seatSection ?? null)
-      const total = (unitPrice * tickets.length).toFixed(2)
+      /**
+       * O preço é apurado por ingresso, não multiplicado pelo primeiro.
+       * Um pedido pode misturar setores — dois assentos na Plateia A e um no
+       * Mezanino — e usar um preço só cobraria o valor errado.
+       */
+      const unitPrices = tickets.map((ticket) => this.priceFor(event, ticket.seatSection))
+      const amounts = calculateOrderAmounts(unitPrices, { protection: dto.protection })
 
       const order = await manager.save(
         manager.create(Order, {
           userId,
           eventId: event.id,
           status: OrderStatus.PENDING,
-          totalAmount: total,
+          subtotalAmount: amounts.subtotal,
+          serviceFee: amounts.serviceFee,
+          protectionFee: amounts.protectionFee,
+          hasProtection: dto.protection ?? false,
+          totalAmount: amounts.total,
           currency: 'BRL',
         }),
       )
@@ -128,6 +138,23 @@ export class OrderService {
         throw new AppError(StatusErrors.CONFLICT, {
           msg: 'Este pedido não pode mais ser pago',
         })
+      }
+
+      /**
+       * A adesão à proteção é decidida no checkout, depois da reserva — então
+       * os valores são recalculados aqui, antes de cobrar. Cobrar o total
+       * gravado na criação ignoraria a escolha que o cliente acabou de fazer
+       * na etapa 2.
+       */
+      if (dto.protection !== undefined && dto.protection !== order.hasProtection) {
+        const unitPrices = order.items.map((item) => Number(item.unitPrice))
+        const amounts = calculateOrderAmounts(unitPrices, { protection: dto.protection })
+
+        order.subtotalAmount = amounts.subtotal
+        order.serviceFee = amounts.serviceFee
+        order.protectionFee = amounts.protectionFee
+        order.totalAmount = amounts.total
+        order.hasProtection = dto.protection
       }
 
       const result = this.payments.process({
@@ -222,7 +249,7 @@ export class OrderService {
   async listMine(userId: string, pagination: PaginationParams): Promise<Paginated<Order>> {
     const [data, total] = await this.orders.findAndCount({
       where: { userId },
-      relations: { event: { venue: true }, items: { ticket: true } },
+      relations: { event: { venue: true, images: true }, items: { ticket: true } },
       order: { createdAt: 'DESC' },
       skip: pagination.skip,
       take: pagination.take,
@@ -234,7 +261,7 @@ export class OrderService {
   async findByIdOrFail(orderId: string, userId: string): Promise<Order> {
     const order = await this.orders.findOne({
       where: { id: orderId },
-      relations: { event: { venue: true }, items: { ticket: true } },
+      relations: { event: { venue: true, images: true }, items: { ticket: true } },
     })
 
     if (!order) {

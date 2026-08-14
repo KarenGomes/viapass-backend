@@ -21,6 +21,37 @@ import { EventImage } from './event-image.entity'
 import { PriceRange } from './price-range.entity'
 import type { CreateEventDTO, UpdateEventDTO } from './event.dto'
 
+/** Nome do setor único de um evento de pista. */
+const PISTA_SECTION = 'Pista'
+
+export interface SectorSummary {
+  name: string
+  priceFrom: number
+  priceTo: number
+  totalSeats: number
+  availableSeats: number
+  soldOut: boolean
+}
+
+/**
+ * Faixa de preço **de venda**, calculada a partir do `seat_map_config`.
+ *
+ * Nome distinto da entidade `PriceRange` de propósito: aquela guarda o que a
+ * Ticketmaster anunciava (referência histórica), esta é o que o cliente paga.
+ * Confundir as duas seria mostrar preço de catálogo como preço de venda.
+ */
+export interface EventLocation {
+  city: string
+  stateCode: string | null
+  eventCount: number
+}
+
+export interface EventPriceRange {
+  min: number
+  max: number
+  currency: string
+}
+
 export interface ListEventsFilters {
   search?: string
   city?: string
@@ -137,6 +168,101 @@ export class EventService {
     }
 
     return event
+  }
+
+  /**
+   * Resumo por setor: preço e disponibilidade real.
+   *
+   * É o que a tela de detalhe do evento precisa para o bloco "Selecione um
+   * setor". A disponibilidade sai de um `GROUP BY` na tabela `tickets` — a
+   * fonte de verdade — e não do contador `available_capacity`, que é cache do
+   * evento inteiro e não sabe distinguir Plateia A de Mezanino.
+   *
+   * Uma query agregada, não uma por setor: um teatro com seis setores viraria
+   * seis idas ao banco a cada abertura da página.
+   */
+  async sectorSummary(event: Event): Promise<SectorSummary[]> {
+    const rows = await this.dataSource
+      .getRepository(Ticket)
+      .createQueryBuilder('ticket')
+      .select('ticket.seat_section', 'section')
+      .addSelect('COUNT(*)', 'total')
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ticket.status = '${TicketStatus.AVAILABLE}')`,
+        'available',
+      )
+      .where('ticket.event_id = :eventId', { eventId: event.id })
+      .andWhere('ticket.status <> :canceled', { canceled: TicketStatus.CANCELED })
+      .groupBy('ticket.seat_section')
+      .getRawMany<{ section: string | null; total: string; available: string }>()
+
+    const countsBySection = new Map(
+      rows.map((row) => [
+        row.section ?? PISTA_SECTION,
+        { total: Number(row.total), available: Number(row.available) },
+      ]),
+    )
+
+    /**
+     * As seções vêm do `seat_map_config` — não das linhas de `tickets`. Um
+     * evento ainda em rascunho já tem seções configuradas e nenhum ingresso
+     * gerado; listar a partir dos tickets faria o setor sumir da tela.
+     */
+    return (event.seatMapConfig?.sections ?? []).map((section) => {
+      const counts = countsBySection.get(section.name) ?? { total: 0, available: 0 }
+
+      return {
+        name: section.name,
+        // Hoje o modelo tem um preço por setor. `priceFrom`/`priceTo` existem
+        // porque o design fala em faixa ("Preços entre X e Y") e porque meia-
+        // entrada, quando entrar, cabe aqui sem mudar o contrato.
+        priceFrom: section.price,
+        priceTo: section.price,
+        totalSeats: counts.total,
+        availableSeats: counts.available,
+        soldOut: counts.total > 0 && counts.available === 0,
+      }
+    })
+  }
+
+  /** Menor e maior preço entre os setores — o "Ingressos entre X e Y" do topo. */
+  priceRange(event: Event): EventPriceRange | null {
+    const prices = (event.seatMapConfig?.sections ?? []).map((section) => section.price)
+
+    if (prices.length === 0) return null
+
+    return { min: Math.min(...prices), max: Math.max(...prices), currency: 'BRL' }
+  }
+
+  /**
+   * Cidades que têm eventos publicados.
+   *
+   * Alimenta o filtro de local da home. Vem do banco, e não de uma lista fixa
+   * no front, porque o catálogo muda: um organizador publica em Recife e a
+   * cidade precisa aparecer sem alguém editar código.
+   *
+   * Só conta eventos visíveis ao público — oferecer um filtro que devolve zero
+   * resultados é pior do que não oferecer o filtro.
+   */
+  async listLocations(): Promise<EventLocation[]> {
+    const rows = await this.events
+      .createQueryBuilder('event')
+      .innerJoin('event.venue', 'venue')
+      .select('venue.city', 'city')
+      .addSelect('venue.state_code', 'stateCode')
+      .addSelect('COUNT(DISTINCT event.id)', 'eventCount')
+      .where('event.status IN (:...statuses)', { statuses: PUBLIC_STATUSES })
+      .andWhere('venue.city IS NOT NULL')
+      .groupBy('venue.city')
+      .addGroupBy('venue.state_code')
+      .orderBy('venue.city', 'ASC')
+      .getRawMany<{ city: string; stateCode: string | null; eventCount: string }>()
+
+    return rows.map((row) => ({
+      city: row.city,
+      stateCode: row.stateCode,
+      eventCount: Number(row.eventCount),
+    }))
   }
 
   /** Contagem real de ingressos livres — a fonte de verdade, não o contador. */

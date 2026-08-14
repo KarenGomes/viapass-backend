@@ -41,6 +41,27 @@ export class Order extends AuditedEntity {
   @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2 })
   totalAmount!: string
 
+  /** Soma dos ingressos, antes de qualquer taxa. */
+  @Column({ name: 'subtotal_amount', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  subtotalAmount!: string
+
+  /**
+   * Taxa de serviço da plataforma.
+   *
+   * Guardada em coluna própria, e não recalculada na leitura: a alíquota pode
+   * mudar, e um pedido de seis meses atrás precisa continuar mostrando o que
+   * foi cobrado naquele dia.
+   */
+  @Column({ name: 'service_fee', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  serviceFee!: string
+
+  /** Proteção opcional contra imprevistos, cobrada por ingresso. */
+  @Column({ name: 'protection_fee', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  protectionFee!: string
+
+  @Column({ name: 'has_protection', type: 'boolean', default: false })
+  hasProtection!: boolean
+
   @Column({ type: 'varchar', length: 8, default: 'BRL' })
   currency!: string
 

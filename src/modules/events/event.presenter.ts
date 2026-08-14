@@ -1,4 +1,5 @@
 import type { Event } from './event.entity'
+import type { EventPriceRange, SectorSummary } from './event.service'
 
 /**
  * Molda o evento para a resposta HTTP.
@@ -42,9 +43,22 @@ export function presentEventSummary(event: Event) {
   }
 }
 
-export function presentEventDetail(event: Event) {
+export interface EventDetailExtras {
+  sectors: SectorSummary[]
+  priceRange: EventPriceRange | null
+}
+
+export function presentEventDetail(event: Event, extras?: EventDetailExtras) {
   return {
     ...presentEventSummary(event),
+    /**
+     * Setores e faixa de preço vêm de fora porque exigem consulta agregada em
+     * `tickets`. O presenter continua sendo só formatação — quem sabe buscar é
+     * o service. `?? []` mantém o formato estável para quem chama sem os
+     * extras, evitando `undefined` na resposta.
+     */
+    sectors: extras?.sectors ?? [],
+    priceRange: extras?.priceRange ?? null,
     tmEventId: event.tmEventId,
     seatmapUrl: event.seatmapUrl,
     seatMapConfig: event.seatMapConfig,

@@ -52,16 +52,23 @@ export class EventController {
      * e só então decidimos o que devolver.
      */
     const isOrganizer = req.user?.role === UserRole.ORGANIZER
-    const event = await this.service.findById(id, { includeUnpublished: isOrganizer })
+    const found = await this.service.findById(id, { includeUnpublished: isOrganizer })
 
-    if (isOrganizer && event.organizerId !== req.user?.id) {
-      // Organizador não é dono: aplica a mesma regra do público.
-      const publicEvent = await this.service.findById(id)
-      res.status(StatusErrors.OK).json(presentEventDetail(publicEvent))
-      return
-    }
+    // Organizador que não é dono cai na mesma regra do público: se o evento
+    // não estiver publicado, `findById` sem a flag devolve 404.
+    const event =
+      isOrganizer && found.organizerId !== req.user?.id ? await this.service.findById(id) : found
 
-    res.status(StatusErrors.OK).json(presentEventDetail(event))
+    const [sectors, priceRange] = await Promise.all([
+      this.service.sectorSummary(event),
+      Promise.resolve(this.service.priceRange(event)),
+    ])
+
+    res.status(StatusErrors.OK).json(presentEventDetail(event, { sectors, priceRange }))
+  }
+
+  locations = async (_req: Request, res: Response): Promise<void> => {
+    res.status(StatusErrors.OK).json({ data: await this.service.listLocations() })
   }
 
   seatMap = async (req: Request, res: Response): Promise<void> => {

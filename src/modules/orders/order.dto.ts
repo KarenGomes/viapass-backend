@@ -2,6 +2,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -40,6 +41,16 @@ export class CreateOrderDTO {
     message: `Máximo de ${MAX_TICKETS_PER_ORDER} ingressos por pedido`,
   })
   quantity?: number
+
+  /**
+   * Proteção contra imprevistos. Opcional e desligada por padrão.
+   *
+   * Adesão precisa ser ato positivo do cliente: um opcional pago que vem
+   * marcado é venda casada.
+   */
+  @IsOptional()
+  @IsBoolean({ message: 'Proteção deve ser verdadeiro ou falso' })
+  protection?: boolean
 }
 
 export class PayOrderDTO {
@@ -56,4 +67,16 @@ export class PayOrderDTO {
   @IsOptional()
   @IsString({ message: 'Número de cartão inválido' })
   cardNumber?: string
+
+  /**
+   * Adesão à proteção contra imprevistos.
+   *
+   * Aceita aqui, e não só na criação do pedido, porque no fluxo real a escolha
+   * acontece **depois** da reserva: o cliente trava os assentos, e só então
+   * percorre as etapas do checkout. Enquanto o pedido está pendente, o valor
+   * ainda pode mudar — o que não pode é mudar depois de pago.
+   */
+  @IsOptional()
+  @IsBoolean({ message: 'Proteção deve ser verdadeiro ou falso' })
+  protection?: boolean
 }

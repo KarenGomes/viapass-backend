@@ -72,6 +72,29 @@ const controller = new EventController(
  *               type: array
  *               description: Faixa anunciada pela Ticketmaster. Referência, não preço de venda.
  *               items: { type: object }
+ *             priceRange:
+ *               type: object
+ *               nullable: true
+ *               description: Menor e maior preço de venda entre os setores.
+ *               properties:
+ *                 min:      { type: number, example: 60 }
+ *                 max:      { type: number, example: 200 }
+ *                 currency: { type: string, example: BRL }
+ *             sectors:
+ *               type: array
+ *               description: >
+ *                 Setores com preço e disponibilidade real, apurada por
+ *                 `GROUP BY` em `tickets`. Alimenta o bloco "Selecione um
+ *                 setor" da tela de detalhe.
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   name:           { type: string, example: Plateia A }
+ *                   priceFrom:      { type: number, example: 100 }
+ *                   priceTo:        { type: number, example: 200 }
+ *                   totalSeats:     { type: integer, example: 36 }
+ *                   availableSeats: { type: integer, example: 34 }
+ *                   soldOut:        { type: boolean }
  */
 
 /**
@@ -106,6 +129,39 @@ const controller = new EventController(
  *       500: { $ref: '#/components/responses/InternalError' }
  */
 router.get('/', optionalAuth(), controller.list)
+
+/**
+ * @openapi
+ * /events/locations:
+ *   get:
+ *     tags: [Events]
+ *     summary: Cidades com eventos publicados
+ *     description: >
+ *       Alimenta o filtro de local. Só considera eventos visíveis ao público —
+ *       oferecer um filtro que devolve zero resultados é pior que não oferecer.
+ *
+ *
+ *       Declarada **antes** de `/events/{id}` de propósito: registrada depois,
+ *       o Express casaria `locations` como se fosse um id.
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Cidades e quantos eventos cada uma tem.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       city:       { type: string, example: São Paulo }
+ *                       stateCode:  { type: string, nullable: true, example: SP }
+ *                       eventCount: { type: integer, example: 3 }
+ */
+router.get('/locations', publicRoute(), controller.locations)
 
 /**
  * @openapi

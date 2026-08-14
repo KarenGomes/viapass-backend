@@ -48,6 +48,7 @@ const EXPECTED: Record<string, string> = {
   'GET /api/events': 'optional',
   'GET /api/events/:id': 'optional',
   'GET /api/events/:id/seats': 'public',
+  'GET /api/events/locations': 'public',
   'POST /api/events': 'role:organizer',
   'POST /api/events/import': 'role:organizer',
   'PUT /api/events/:id': 'role:organizer',
@@ -152,6 +153,7 @@ describe('política de acesso das rotas', () => {
 
       expect(publicRoutes).toEqual([
         'GET /api/events/:id/seats',
+        'GET /api/events/locations',
         'GET /api/health',
         'GET /api/tickets/shares/:token',
         'POST /api/auth/login',
